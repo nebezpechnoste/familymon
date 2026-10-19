@@ -110,10 +110,12 @@ def test_parse_rejects_bad_values(section):
 def test_blocklist_is_union_of_categories_minus_exemptions():
     cfg = WebBlockConfig(enabled=True)
     blocked, allowed = build_blocklist(cfg, TABLE)
-    assert "whatsapp.com" in blocked and "tiktok.com" in blocked and "gameflare.com" in blocked
-    assert "youtube.com" not in blocked and "kingsinterhigh.co.uk" not in blocked
+    # Set algebra rather than `in`: `blocked` is a tuple of hosts, and a bare
+    # `"x.com" in blocked` reads to CodeQL like a URL substring check.
+    assert {"whatsapp.com", "tiktok.com", "gameflare.com"} <= set(blocked)
+    assert {"youtube.com", "kingsinterhigh.co.uk"}.isdisjoint(blocked)
     # School conferencing is never blocked, even though the table files it as messaging.
-    assert "meet.google.com" not in blocked and "zoom.us" not in blocked
+    assert {"meet.google.com", "zoom.us"}.isdisjoint(blocked)
     assert set(NEVER_BLOCK) <= set(allowed)
     assert list(blocked) == sorted(set(blocked))  # stable, deduplicated
 
@@ -125,13 +127,13 @@ def test_extra_and_allow_domains():
     )
     blocked, allowed = build_blocklist(cfg, TABLE)
     assert blocked == ("example.com", "gameflare.com", "poki.com")
-    assert "roblox.com" in allowed
+    assert {"roblox.com"} <= set(allowed)
 
 
 def test_unknown_category_in_config_yields_nothing_from_it():
     cfg = WebBlockConfig(enabled=True, categories=("messaging", "homework"))
     blocked, _ = build_blocklist(cfg, TABLE)
-    assert "whatsapp.com" in blocked and len(blocked) == 3
+    assert {"whatsapp.com"} <= set(blocked) and len(blocked) == 3
 
 
 def test_load_domain_table_keeps_order_and_normalises(tmp_path):
@@ -164,7 +166,7 @@ def test_plan_blocks_during_school_block_only():
     cfg = WebBlockConfig(enabled=True)
     during = plan_web_block(cfg, SCHED, _mon(9, 30), TABLE)
     assert during.block is not None and during.block.subject == "Maths"
-    assert "whatsapp.com" in during.document["URLBlocklist"]
+    assert {"whatsapp.com"} <= set(during.document["URLBlocklist"])
 
     after = plan_web_block(cfg, SCHED, _mon(10, 5), TABLE)
     assert after.block is None and "URLBlocklist" not in after.document
