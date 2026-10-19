@@ -139,7 +139,7 @@ sudo familymonctl schedule show
 
 ## 8. Dashboard access
 
-The dashboard is a system unit (`familymon-dashboard.service`) running as the unprivileged `familymon` user with `FAMILYMON_STATE_DIR=/var/lib/familymon`. It opens the capture database read-only, can read screenshots and the schedule through group membership, and cannot read `policy.yaml` or anything else root-only. The unit is sandboxed (`ProtectSystem=strict`, `ProtectHome=yes`, `NoNewPrivileges=yes`, private `/tmp` and devices).
+The dashboard is a system unit (`familymon-dashboard.service`) running as the unprivileged `familymon` user with `FAMILYMON_STATE_DIR=/var/lib/familymon`. It opens the capture database read-only, reads the schedule through group membership (it never reads screenshot files), and cannot read `policy.yaml` or anything else root-only. The unit is sandboxed (`ProtectSystem=strict`, `ProtectHome=yes`, `NoNewPrivileges=yes`, private `/tmp` and devices).
 
 It refuses to start unless both credentials are set. Create `/etc/familymon/dashboard.env`, root (not shipped by the package, not a conffile). The mode is 0600 root:root: systemd reads it as root before dropping privileges, so neither the dashboard process nor the kid can read the password. The postinst forces that mode if the file already exists.
 

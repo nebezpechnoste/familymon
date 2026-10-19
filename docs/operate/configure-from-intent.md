@@ -164,7 +164,7 @@ web_block:
 
 These are the defaults for `categories` and `block_private`. Listing them makes the intent explicit.
 
-Prerequisites: a schedule must exist (examples 4 and 5), the `familymon-webblock.timer` system timer must be enabled (shipped, but the package postinst does not enable it, so run `sudo systemctl enable --now familymon-webblock.timer`), and Chrome is the governed browser.
+Prerequisites: a schedule must exist (examples 4 and 5), the `familymon-webblock.timer` system timer must be active (the package enables it; check with `systemctl is-active familymon-webblock.timer`), and Chrome is the governed browser.
 
 Preview (writes nothing, but run it as root: a non-root run looks for `policy.yaml` in the invoking user's own state dir):
 
@@ -343,7 +343,7 @@ Preview (read-only, no timekpr calls):
 sudo familymonctl enforce chargeback --dry-run
 ```
 
-It prints the uncharged browser-game captures and "charged today so far". Only captures where no native game was running are billed. Each tick is capped at 1800 seconds. Requires the `familymon-chargeback.timer` (every 5 minutes; shipped, not enabled by the package). Verify: after a tick, the next dry-run shows fewer uncharged captures. An Event `playtime_chargeback` is recorded. Undo: set `charge_browser_games: false`. Charge-back only deducts and nothing in the code refunds it; `grant --playtime` can add minutes back if the parent agrees.
+It prints the uncharged browser-game captures and "charged today so far". Only captures where no native game was running are billed. Each tick is capped at 1800 seconds. Requires the `familymon-chargeback.timer` (every 5 minutes, enabled by the package). Verify: after a tick, the next dry-run shows fewer uncharged captures. An Event `playtime_chargeback` is recorded. Undo: set `charge_browser_games: false`. Charge-back only deducts and nothing in the code refunds it; `grant --playtime` can add minutes back if the parent agrees.
 
 ### Example 12: Warn but do not block
 

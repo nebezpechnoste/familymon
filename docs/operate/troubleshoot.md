@@ -420,10 +420,10 @@ Check:
 3. The domain is in a blocked category (default `messaging`, `social`, `games`), or in `extra_domains`, and not in `allow_domains`. `video` is not blocked by default. Streaming is flagged by live warnings, not blocked.
 4. `meet.google.com`, `teams.microsoft.com` and `zoom.us` are never blocked.
 5. Is the schedule imported? If the policy user's `schedule.yaml` is missing, there is nothing to block.
-6. Is `familymon-webblock.timer` enabled? It is not enabled by the package. It ticks every minute.
+6. Is `familymon-webblock.timer` active? The package enables it; it ticks every minute. `systemctl is-active familymon-webblock.timer`.
 7. Is the extension present and running? See next entry. Incognito or guest windows are covered by `block_private`, not by the extension.
 
-**Fix.** Enable the timer if missing (root):
+**Fix.** Re-enable the timer if someone with root disabled it, and run one tick (root):
 
 ```bash
 systemctl enable --now familymon-webblock.timer
