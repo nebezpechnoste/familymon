@@ -66,14 +66,15 @@ Writes `dist/familymon_<VERSION>_amd64.deb`. Changes the local tree only (`dist/
 - Version: `<pyproject version>+<YYYYMMDD.HHMM>.g<short sha>[.dirty]`.
 - Bundles a relocatable venv at `/opt/familymon/venv` (`uv venv --relocatable`, `uv sync --frozen --no-dev --all-extras --no-editable`). `/usr/bin/familymonctl` is a wrapper around `/opt/familymon/venv/bin/python3 -m familymon.cli`.
 - Checks: the venv python resolves to system python3; the staged `familymon` package is byte-identical to the working tree (else exit 1). A smoke test runs `familymon.cli --help` from the staged venv.
-- Depends: `python3` (matching the build host's minor version), `kde-spectacle`, `sqlite3`, `libnotify-bin`. Recommends: `timekpr-next`, `tesseract-ocr`.
+- Depends: `python3` (matching the build host's minor version), `kde-spectacle`, `sqlite3`, `libnotify-bin`, `adduser`, `util-linux` (`runuser`), `procps` (`pkill`), `findutils`. Recommends: `timekpr-next`, `tesseract-ocr`.
 - Conffiles: `/etc/familymon/{messaging_apps,game_apps,schedule_extras}.yaml`.
-- Installs user units to `/usr/lib/systemd/user/`, system units to `/usr/lib/systemd/system/`, and `familymon.desktop` (`NoDisplay=true`, used as the notification `desktop-entry` hint).
+- Installs the system units from `deploy/deb/systemd-system/` to `/usr/lib/systemd/system/` (the deb ships no user units; `deploy/systemd/user/` is dev-only), and `familymon.desktop` (`NoDisplay=true`, used as the notification `desktop-entry` hint).
 - Builds the Chrome extension into `/usr/share/familymon/chrome-extension` with version `1.<yymm>.<d>.<Hmm>`. Each build must have a higher version or Chrome keeps the old one.
-- postinst: on `configure` only, for each logged-in user runs `systemctl --user -M <user>@ daemon-reload` and restarts `familymon-capture.service` and `familymon-dashboard.service` if active (best effort). It always exits 0, enables nothing, and does not touch system units. No prerm, postrm or preinst exists.
+- postinst: on `configure` only (always exits 0): creates the `familymon` system user and group; forces `/etc/familymon/dashboard.env` to root:root 0600 if present; makes `/var/lib/familymon` root:`familymon` 0750; stops the old per-user units in every running user manager and `pkill`s old `familymon.cli capture-run|dashboard` processes; deletes `familymon-*` symlinks (enable and mask links) under every home's `~/.config/systemd/user` with `find -delete` (no symlink following); runs `familymonctl migrate-state` when `policy.yaml` exists; `daemon-reload`; enables the capture and dashboard services and all six timers (classify, heartbeat, notify, enforce, chargeback, webblock); restarts the two services and starts the timers.
+- prerm: on `remove` only, `systemctl disable --now` for the two services and six timers. No postrm or preinst exists.
 - Compression: `dpkg-deb --build --root-owner-group -Zzstd`.
 
-Parent decides: units are not enabled by the package. Enabling each timer or service is a manual step on the target.
+Parent decides: the package enables every unit itself. Units that need configuration skip themselves via `ConditionPathExists` until `policy.yaml` (or `dashboard.env`) exists, so a fresh install does nothing until the parent's policy is in place. Changes to the postinst touch a kid's laptop on every unattended upgrade: test them on a throwaway VM or container, never on a real family's machine.
 
 Verify: `dpkg-deb -I dist/familymon_*.deb` and `dpkg-deb -c dist/familymon_*.deb`. Undo: delete the file in `dist/`.
 
@@ -101,7 +102,7 @@ Safety:
 
 - The repo is unsigned and relies on `[trusted=yes]`. Treat the host as trusted.
 - The script comment assumes the target's unattended-upgrades allows `origin=*`, so new versions install unattended. The repo does not configure that.
-- After an upgrade, long-running user units may keep old code. The postinst restarts capture and dashboard for logged-in users. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time.
+- After an upgrade, long-running units may keep old code. The postinst restarts the capture and dashboard system units. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time.
 - Run the tests (separate step) and `familymonctl health` on the target before shipping each iteration; keep capture running.
 
 ## CI

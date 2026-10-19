@@ -8,7 +8,7 @@ Placeholders used across these docs: the monitored account is `kid`, the laptop 
 
 familymon is local-first monitoring plus enforcement for a Linux/KDE (Wayland) laptop. It has two halves.
 
-- **Monitor (reactive, logged).** A loop in the kid's own session records which windows are open, takes a screenshot with messaging windows blacked out, and classifies each sample into one category. Nothing leaves the machine. The parent reads the result in a local dashboard or CLI.
+- **Monitor (reactive, logged).** A root supervisor follows the kid's graphical session, records which windows are open, takes a screenshot with messaging windows blacked out, and classifies each sample into one category. Nothing leaves the machine. The parent reads the result in a local dashboard or CLI.
 - **Enforce (preventive).** Time and per-app limits are delegated to timekpr-next. Web blocking during lessons is delegated to Chrome managed policy, a force-installed extension and a process sweep. familymon only computes the desired state and pushes it; it does not build its own session or time enforcement.
 
 The two halves connect through the schedule: the schedule says when a lesson is in progress, and the lesson is what turns "the kid has a game open" from a log line into a conflict, a warning or a block.
@@ -29,7 +29,8 @@ Monitoring is disclosed to the kid. It is not covert.
 2. **Safety: never take a raw screenshot of the kid's session for diagnostics.** It bypasses the messaging-window redaction. Verify notifications through the desktop's notification history or D-Bus state, or through familymon's own (redacting) capture.
 3. **Tests and dev runs never touch real processes or real user state.** Destructive paths are tested only against things the test spawned. The process sweep refuses to run against uid 0 and refuses to kill without root, to protect a dev machine's own browser.
 4. **Gate on real exit codes.** Do not chain a test run through a pipe into a build or publish step (`pytest | tail && build` hides the exit code). Verify and ship in separate steps.
-5. **Read the capture DB read-only from root-side jobs** (SQLite URI `mode=ro`), so root never leaves root-owned journal files in the kid's state dir.
+5. **Read the capture DB read-only from jobs that only report on it** (SQLite URI `mode=ro`): chargeback, `events`, the dashboard. The capture supervisor, classifier and heartbeat are the only writers.
+6. **Every operator command runs as root** (`sudo familymonctl ...`). The kid has no access to familymon's state, so there is no "run it as the kid" any more.
 
 See [develop/testing-and-shipping.md](develop/testing-and-shipping.md) and [operate/verify-and-health.md](operate/verify-and-health.md).
 
@@ -37,36 +38,38 @@ See [develop/testing-and-shipping.md](develop/testing-and-shipping.md) and [oper
 
 ```
 capture ──► classify ──► schedule ──► conflicts ──► warnings / enforcement
- (user)      (user)       (data)       (report)       (user + root)
+ (root)      (root)       (data)       (report)       (root)
 ```
 
 | Stage | What it does | Runs as | Cadence |
 |---|---|---|---|
-| Capture | Enumerate windows via KWin, screenshot via `spectacle`, redact messaging windows, pHash dedup, write a `Capture` row | kid, systemd user unit `familymon-capture.service` running `capture-run` | `FAMILYMON_INTERVAL` seconds, default 60 |
-| Classify | Give each unclassified capture exactly one category (heuristics only) | kid, `familymon-classify.timer` running `classify` | every 5 min after activation |
+| Capture | Root supervisor follows the kid's session and, per tick, runs a short-lived `capture-probe` as the kid that enumerates windows via KWin, screenshots via `spectacle` and redacts messaging windows. Root then does game detection, pHash dedup and writes a `Capture` row | root, system unit `familymon-capture.service` running `capture-supervise` | `FAMILYMON_INTERVAL` seconds, default 60 |
+| Classify | Give each unclassified capture exactly one category (heuristics only) | root, `familymon-classify.timer` running `classify` | 2 min after boot, then every 5 min |
 | Schedule | Weekly blocks (lessons and extras) plus date-range breaks, stored in `schedule.yaml` | data file, imported or hand-written | re-read by every consumer on every run |
 | Conflicts | A `school` block overlapping a distraction capture becomes a conflict episode | CLI `conflicts` and the dashboard, same function | on demand |
-| Live warnings | Notification to the kid during a lesson when a distraction is seen | kid, `familymon-notify.timer` running `schedule notify-tick` | every 1 min |
+| Live warnings | Notification to the kid during a lesson when a distraction is seen. Runs as root and delivers into the kid's session; a notice counts as done only if it was delivered | root, `familymon-notify.timer` running `schedule notify-tick` | every 1 min |
 | Enforcement | timekpr limits, Chrome policy, extension, process sweep, play-time chargeback | root, system units `familymon-enforce`, `familymon-webblock`, `familymon-chargeback` | see section 6 |
 
-A heartbeat unit (`familymon-heartbeat.timer`, every minute) records whether capture is fresh. `familymonctl health` reports on the whole pipeline. See [operate/verify-and-health.md](operate/verify-and-health.md).
+A heartbeat unit (`familymon-heartbeat.timer`, root, every minute) records whether capture is fresh and whether the kid has a graphical session. `familymonctl health` reports on the whole pipeline. See [operate/verify-and-health.md](operate/verify-and-health.md).
 
 ### 3.1 Capture details that matter conceptually
 
-- Each tick takes window metadata first, then the screenshot. A `Capture` row is always written. The PNG is kept only if it is visually novel: a perceptual-hash ring buffer (8 hashes, Hamming threshold 4) marks near-duplicates `same_as_prev` and skips saving the file. Dedup keys on visual novelty, not on "same active window".
-- The only capture backend is `kwin_wayland`. It loads a small JS script into KWin, which pushes window data back over the session bus. Screenshots use `spectacle` because KWin's own screenshot D-Bus interface rejects unauthorized callers.
+- If the kid has no graphical session (logged out, text console), the tick is skipped and nothing is recorded; the heartbeat reads that as `idle`, not as a fault.
+- Each tick takes window metadata first, then the screenshot. A `Capture` row is written whenever the window list arrived. The PNG is kept only if it is visually novel: a perceptual-hash ring buffer (8 hashes, Hamming threshold 4) marks near-duplicates `same_as_prev` and skips saving the file. Dedup keys on visual novelty, not on "same active window".
+- The only capture backend is `kwin_wayland`. Per tick the supervisor writes a KWin script that carries a random nonce, the probe loads it into KWin, and KWin pushes window data back over the session bus. The sink accepts the push only from KWin's own bus connection with the right nonce; anything else is rejected and logged as `capture_tamper`. The script is unloaded after the tick. Screenshots use `spectacle` because KWin's own screenshot D-Bus interface rejects unauthorized callers, and because `spectacle` run by root itself cannot reach the kid's KWin; that is why the probe runs as the kid.
+- If the window list does not arrive, no screenshot is taken (skip reason `window_list_unavailable`), because redaction needs the window geometry. If the probe fails while a session exists, the tick records a `capture_failed` event instead of a capture.
 - If the session is locked or inactive (checked through logind, on the seated graphical session only), window metadata is still recorded and the screenshot is skipped with reason `session_locked` or `session_inactive`. Any logind error fails open: capture continues.
 - Messaging windows are redacted before anything is written (section 8).
-- The game library is scanned once at `capture-run` startup. A restart re-scans.
+- The game library is scanned at supervisor start and re-scanned every 30 minutes, so a game installed mid-session counts without a restart. Games seen installed are remembered in `known_games.json`, so hiding a game's files does not remove its PlayTime mask (`familymonctl enforce games`).
 - Capture does not read the schedule.
 
 ### 3.2 DB self-healing
 
-Every read-write DB user opens the DB through `make_engine`, which first runs an integrity check (the root-side chargeback job opens the kid's DB through a separate read-only engine instead). If the file is damaged it is moved aside as `<db>.corrupt-<timestamp>` (never deleted), then recovery is attempted in order: `sqlite3 .recover`, Python `iterdump`, then an empty DB. Monitoring continues in every case and a `db_recovered` event is recorded. `familymonctl health` surfaces it. Because opening can write, "read-only" commands that open the DB are not strictly side-effect free.
+Every read-write DB user opens the DB through `make_engine`, which first runs an integrity check (chargeback and the dashboard open it through a separate read-only engine instead). If the file is damaged it is moved aside as `<db>.corrupt-<timestamp>` (never deleted), then recovery is attempted in order: `sqlite3 .recover`, Python `iterdump`, then an empty DB. Monitoring continues in every case and a `db_recovered` event is recorded. `familymonctl health` surfaces it. Because opening can write, "read-only" commands that open the DB are not strictly side-effect free.
 
 ### 3.3 Unclassified rows
 
-Captures that the classifier has not reached have no classification row; the dashboard shows them as `unknown`, and `familymonctl conflicts` and chargeback ignore them (both join on classification rows). If many rows are `unknown` after an outage, run `familymonctl classify` and, to relabel history, `classify --redo` (it deletes heuristic-sourced classification rows and recomputes them; see [reference/cli.md](reference/cli.md)). User timers use `OnActiveSec`, not `OnBootSec`, so they arm when the user logs in even long after boot.
+Captures that the classifier has not reached have no classification row; the dashboard shows them as `unknown`, and `familymonctl conflicts` and chargeback ignore them (both join on classification rows). If many rows are `unknown` after an outage, run `familymonctl classify` and, to relabel history, `classify --redo` (it deletes heuristic-sourced classification rows and recomputes them; see [reference/cli.md](reference/cli.md)). The classify timer is a system timer, so it runs whether or not the kid is logged in.
 
 ## 4. Categories and the multi-window priority rule
 
@@ -142,7 +145,7 @@ Sources of a schedule:
 - **Extras.** `/etc/familymon/schedule_extras.yaml` can exclude subjects, add blocks and define breaks. It is applied only by `schedule import` and `schedule refresh`; edits do nothing until one of those runs.
 - **By hand.** Nothing requires the importer. A minimal file with `timezone` and `blocks` loads.
 
-Caveats: `schedule refresh` keeps only `school` blocks from the existing file and rebuilds all else from the extras. `enforce web-block` reads the schedule from the kid's state dir (`~/.local/state/familymon/schedule.yaml` of the policy user), not from root's `/var/lib/familymon`. A `schedule import` run as root writes to root's state dir, which web-block does not read by default; run the import as the kid, or point `enforce web-block --schedule FILE` at the root copy.
+Caveat: `schedule refresh` keeps only `school` blocks from the existing file and rebuilds all else from the extras. Every schedule command runs as root and the one schedule file is `/var/lib/familymon/schedule.yaml`, which every consumer (web-block, notify, conflicts, dashboard) reads.
 
 ## 6. What is enforced by whom
 
@@ -154,7 +157,7 @@ Caveats: `schedule refresh` keeps only `school` blocks from the existing file an
 | New web navigation during a lesson | Chrome managed policy | `URLBlocklist` in `/etc/opt/chrome/policies/managed/familymon.json`, plus DoH and ECH off, DevTools policy, private windows off per `block_private` | root writes the file | `familymon-webblock.timer` (every minute) |
 | Tabs already open when a lesson starts | Chrome extension | Force-installed MV3 extension redirects matching tabs to a local "blocked" page | inside Chrome, no root | on policy change, tab update, and a 1-minute alarm |
 | Other browsers, Chrome with `--disable-extensions`, `forbid_apps` | Process sweep | SIGTERM, 3 s grace, then SIGKILL, only during a lesson, with a notice to the kid | root | same tick as web-block |
-| Warning about distraction the web layer cannot stop (native game, streaming video, chat) | Live warnings | Desktop notification, "This is logged." | kid | `familymon-notify.timer` (every minute) |
+| Warning about distraction the web layer cannot stop (native game, streaming video, chat) | Live warnings | Desktop notification, "This is logged." | root, delivered into the kid's session | `familymon-notify.timer` (every minute) |
 
 Ordering inside the web-block tick: the Chrome policy file is reconciled, then the sweep runs if a lesson is active.
 
@@ -176,8 +179,8 @@ Points to keep straight:
 - timekpr PlayTime does nothing until the global PlayTime switches in `/etc/timekpr/timekpr.conf` (including the enhanced activity monitor) are enabled. Per-user settings are silently masked until then. familymon does not edit that file; it is a manual prerequisite.
 - PlayTime masks are effectively full-match against process path and command line. The driver wraps bare `games.extra_masks` entries as `.*mask.*`. Flatpak apps appear as their `bwrap` wrapper.
 - timekpr-next behaviour observed with 0.5.10 (not familymon code): timekpr applies a play-time-left change on its next poll (about 3 s), so read back after a few seconds; and suspend and lock lockouts are only enforced while the session is active.
-- After a package upgrade, long-running user units may still run old code. The deb's postinst runs `daemon-reload` and restarts `familymon-capture.service` and `familymon-dashboard.service` for each logged-in user where that unit is active (best effort); the timer-driven services pick up new code by themselves. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time.
-- The package enables no units. The postinst only reloads and restarts the capture and dashboard user units if they are already active, so the system timers (enforce, chargeback, webblock) and the user units and timers all need a manual `systemctl enable --now` (`systemctl --user enable --now` for user units).
+- After a package upgrade, long-running units may still run old code. The deb's postinst runs `daemon-reload`, then enables and restarts `familymon-capture.service` and `familymon-dashboard.service` and starts all six timers; the timer-driven services pick up new code by themselves. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time.
+- The package enables everything itself (capture, dashboard, and the classify, heartbeat, notify, enforce, chargeback and webblock timers). Units that need configuration skip themselves until it exists: capture, notify, enforce, chargeback and webblock wait for `/var/lib/familymon/policy.yaml`, and the dashboard waits for `/etc/familymon/dashboard.env`.
 
 Details: [operate/configure-from-intent.md](operate/configure-from-intent.md), [reference/config.md](reference/config.md).
 
@@ -198,9 +201,9 @@ Live warnings (`schedule notify-tick`) apply the same rules to the lesson in pro
 
 ### 8.1 What familymon records
 
-- Window class, title, pid, executable path, geometry and state for every visible window, each tick.
-- A screenshot per tick when visually novel, stored as a PNG under the state dir (directories mode 0700). The DB stores only the file path. The DB file is mode 0600.
-- Classification, events (heartbeat, DB recovery, grants, chargebacks, web blocks, lesson closes).
+- Window class, title, pid, executable path, geometry and state for every window, each tick, including whether it is on the virtual desktop and activity being shown. A window on another desktop, like a minimized one, is treated as not on screen: it is neither redacted nor counted by the classifier.
+- A screenshot per tick when visually novel, stored as a PNG under `/var/lib/familymon/screenshots` (root-only: directories 0700, files 0600; the dashboard shows whether a screenshot exists, never the image). The DB stores only the file path. The DB is root-owned and group-readable by `familymon`; the state directory itself is root:`familymon` 0750, so the kid cannot open any of it.
+- Classification, events (heartbeat, DB recovery, grants, chargebacks, web blocks, lesson closes, `capture_failed`, `capture_tamper`).
 - Everything stays on the laptop. The dashboard binds to `127.0.0.1` by default, requires HTTP Basic credentials from `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS`, and refuses to start without them.
 
 ### 8.2 Messaging redaction
@@ -221,14 +224,16 @@ The kid must never control a signal that pauses or disables monitoring. GameMode
 - Game detection uses the installed Steam library (only directories with a real `appmanifest_*.acf` and an existing `steamapps/common/<installdir>`, excluding Proton and runtime tools) plus a curated, parent-extendable list of window classes and binaries.
 - App categories come only from root-owned `.desktop` directories.
 - Session suppression uses logind state of the seated graphical session, not an environment variable the kid could set. It fails open.
-- The root-side jobs read the kid's DB read-only.
+- The monitoring loop itself is root-owned. The only code that runs as the kid is the per-tick probe, started from root-owned code with a scrubbed environment (`env -i`, `python -I`); its output is parsed and checked by root.
 
 When adding any new signal, ask: can the kid set it from their own account? If yes, it must not be able to reduce monitoring.
 
 ### 8.4 What familymon does not defend against
 
-- **Same-user forgery.** Any process of the kid's uid on the session bus can forge the window-list callback. This is acknowledged in code as future work. The kid's account is not a trust boundary for the capture loop.
-- **Root or physical access.** A kid with root, the ability to boot another OS, or the ability to stop user units can stop monitoring. Detection is by the heartbeat and health checks (gaps, stale capture), not prevention. The heartbeat watcher currently runs as a user unit; hoisting it to root is future work.
+- **Making ticks fail.** The kid can log out, restart KWin, kill each probe, or squat the `org.familymon.WindowSink` bus name. Capture then fails for that tick. This is detected, not prevented: `capture_failed` and `capture_tamper` events, a stale or dead heartbeat while the session is open, and a red banner on the dashboard. A forged window-list push is rejected (wrong sender or wrong nonce) and recorded.
+- **Notifications are advisory.** The kid can turn off familymon's notifications in Plasma settings. Monitoring and enforcement are unaffected.
+- **Text consoles.** A login on a text console has no KWin session and is not captured.
+- **Root or physical access.** A kid with root or the ability to boot another OS can stop monitoring. This is out of scope. Everything else (the units, the state, the heartbeat watcher) is root-owned, so stopping or masking a unit needs root. See [develop/tamper-resistance.md](develop/tamper-resistance.md) for the full threat model.
 - **Other devices and networks.** Phones, other computers, other accounts and non-Chrome network use outside the laptop are out of scope. There is no DNS layer yet.
 - **Non-Chrome browsers.** They are closed during lessons, not filtered. Chrome DevTools are available except on policy-installed extensions.
 - **Private windows** without `block_private` set to block them: the extension cannot be forced into them.
@@ -242,13 +247,14 @@ Other incident-derived behaviours: Plasma may only show popups for apps with a d
 
 | Item | Location | Notes |
 |---|---|---|
-| State dir | `$FAMILYMON_STATE_DIR`, else `/var/lib/familymon` for root, else `${XDG_STATE_HOME:-~/.local/state}/familymon` | Root and kid have different state dirs |
-| Capture DB | `<state>/captures.db` | Kid's copy is in the kid's state dir |
-| Screenshots | `<state>/screenshots/<YYYY-MM-DD>/<capture_id>.png` | |
-| Schedule | `<state>/schedule.yaml` | Web-block reads the kid's copy |
+| State dir | `/var/lib/familymon` (root:`familymon` 0750). `$FAMILYMON_STATE_DIR` overrides it (the dashboard unit sets it); a non-root dev run uses `${XDG_STATE_HOME:-~/.local/state}/familymon` | One state dir for everything. Earlier releases kept the kid's data in their home; `migrate-state` moved it |
+| Capture DB | `<state>/captures.db` | Group-readable by `familymon` |
+| Screenshots | `<state>/screenshots/<YYYY-MM-DD>/<capture_id>.png` | Root-only (dirs 0700, files 0600) |
+| Schedule | `<state>/schedule.yaml` | Group-readable; read by every consumer |
 | Policy | `<state>/policy.yaml` (root's state dir in production) | Not read from `/etc`; a template ships at `/usr/share/familymon/policy_example.yaml`. Unknown top-level or section keys are not checked, so a typo there is silently ignored (an unknown day name under a per-day map is rejected, as are bad `lockout` and `web_block` values) |
 | Grants | `<root state>/grants.json` | |
 | Chargeback watermark | `<root state>/playtime_charges.json` | |
+| Known games | `<root state>/known_games.json` | Game dirs seen installed; `enforce games` |
 | Chrome policy | `/etc/opt/chrome/policies/managed/familymon.json` | Written only by `enforce web-block`, deleted when `web_block.enabled` is false |
 | Bundled configs | `/etc/familymon/{messaging_apps,game_apps,schedule_extras}.yaml` (dpkg conffiles) | `domains_starter.yaml` and `title_brands.yaml` are overridden by creating the file in `/etc/familymon/` |
 
@@ -262,7 +268,7 @@ Full tables: [reference/files-and-units.md](reference/files-and-units.md), [refe
 | Block (schedule block) | A weekly time slot with subject and category. `school` blocks are monitored and web-blocked. |
 | Break | A date range that suspends blocks of listed categories. |
 | Capture | One tick of the loop: window metadata plus optional screenshot, one DB row. |
-| Capture loop | `capture-run`, the long-running per-user process. |
+| Capture supervisor | `capture-supervise`, the long-running root process (`familymon-capture.service`). It runs `capture-probe` as the kid once per tick. `capture-run` is the in-session dev loop. |
 | Category | One of the eleven labels (section 4). |
 | Chargeback | Deducting browser-game minutes from timekpr PlayTime left, because timekpr cannot see browser games. |
 | Classification | The stored label, confidence, evidence, source and `present_categories` for a capture. |
@@ -273,7 +279,7 @@ Full tables: [reference/files-and-units.md](reference/files-and-units.md), [refe
 | Extras | `schedule_extras.yaml`: subject exclusions, extra blocks, breaks. |
 | Fail-open | On logind or similar errors, capture continues rather than stopping. |
 | Grant | A date-bound, self-expiring widening of today's allowed hours (`enforce grant --until`). A play-time grant (`--playtime`) is not stored as a grant: it adjusts timekpr's play-time-left counter once and is logged as an event. |
-| Heartbeat | Event row recording capture freshness: ok under 180 s, stale 180 to 600 s, dead 600 s or more, never if no captures. |
+| Heartbeat | Event row recording capture freshness and the kid's session state: ok under 180 s, stale 180 to 600 s, dead 600 s or more, never if no captures, idle if the kid has no graphical session. |
 | Hybrid / multi-label | The planned upgrade to the single-category rule. |
 | Lesson | A `school` block in progress now. |
 | Lockout type | What timekpr does at limit: `lock`, `suspend`, `suspendwake`, `terminate`, `kill`, `shutdown`. |
@@ -284,7 +290,7 @@ Full tables: [reference/files-and-units.md](reference/files-and-units.md), [refe
 | Reconciler | The hourly `enforce apply` run that restores policy. |
 | Sweep | Closing forbidden processes during a lesson (also the extension's tab sweep; context tells which). |
 | State dir | See section 9. |
-| Suppress reason | Why a screenshot was skipped: `session_locked`, `session_inactive`, `messaging_app`. |
+| Suppress reason | Why a screenshot was skipped: `session_locked`, `session_inactive`, `messaging_app`, `window_list_unavailable`. |
 | timekpr | timekpr-next, the time and app enforcement backend. |
 | Trust-resistant signal | A signal the kid cannot control to reduce monitoring. |
 | `unknown` | No signal, or not yet classified. |

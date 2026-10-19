@@ -1,13 +1,13 @@
 # Troubleshoot
 
-Read this when something looks wrong on a running familymon install: stale behaviour after an upgrade, captures labelled `unknown`, missing notifications, PlayTime not counting, a grant that vanished, the kid logged out unexpectedly, a blocked site still open, or a stale/DOWN heartbeat. Each entry is symptom, diagnosis (read-only commands first), fix. For routine checks see [verify-and-health.md](verify-and-health.md). For command flags see [../reference/cli.md](../reference/cli.md). For paths and units see [../reference/files-and-units.md](../reference/files-and-units.md). For concepts see [../concepts.md](../concepts.md).
+Read this when something looks wrong on a running familymon install: stale behaviour after an upgrade, captures labelled `unknown`, missing notifications, PlayTime not counting, a grant that vanished, the kid logged out unexpectedly, a blocked site still open, a stale/DOWN heartbeat, or `capture_failed` / `capture_tamper` events. Each entry is symptom, diagnosis (read-only commands first), fix. For routine checks see [verify-and-health.md](verify-and-health.md). For command flags see [../reference/cli.md](../reference/cli.md). For paths and units see [../reference/files-and-units.md](../reference/files-and-units.md). For concepts see [../concepts.md](../concepts.md).
 
 ## Ground rules
 
 - **Safety: never take a raw screenshot of the kid's session for diagnostics.** It bypasses messaging-window redaction. Verify notifications through the desktop's notification history, D-Bus state, or familymon's own redacting capture.
 - **Parent decides policy.** Establish facts first. Separate a BUG (code did not do what the rule says) from a POLICY question (the rule itself). Fix bugs. Present policy trade-offs to the parent with examples. Never change classification or enforcement policy on one ambiguous data point.
-- Diagnose with read-only commands first. `familymonctl health` and `conflicts` open the DB, and opening can trigger self-recovery (see [DB was auto-recovered](#db-was-auto-recovered)), so they are not strictly side-effect free.
-- State dir depends on the user. Non-root runs use `~/.local/state/familymon`. Root runs use `/var/lib/familymon`. The kid's capture DB is `~kid/.local/state/familymon/captures.db`. Run kid-side commands as `kid`, enforcement commands as root.
+- Diagnose with read-only commands first. `familymonctl health` and `conflicts` open the DB read-write, and opening can trigger self-recovery (see [DB was auto-recovered](#db-was-auto-recovered)), so they are not strictly side-effect free. `familymonctl events` is read-only.
+- Everything runs as root and uses one state dir, `/var/lib/familymon`, including the capture DB `/var/lib/familymon/captures.db`. Run every familymonctl command with `sudo`. A non-root run resolves a separate dev state dir (`~/.local/state/familymon`) and tells you nothing about production. Every unit is a system unit: use `systemctl`, `journalctl -u`, never `--user`.
 - Tests and dev runs must never touch real processes or real user state. Reproduce destructive paths only against processes you spawned.
 
 ## Quick triage
@@ -16,6 +16,9 @@ Read this when something looks wrong on a running familymon install: stale behav
 |---|---|
 | Behaviour looks like old code after an upgrade | [Stale code after upgrade](#stale-code-after-upgrade) |
 | Heartbeat `stale` / `dead` / `never`, dashboard says "Capture stale" or "Capture DOWN" | [Heartbeat stale or DOWN](#heartbeat-stale-or-down) |
+| Dashboard says "Capture DOWN while the session is active" | [Capture DOWN while the session is active](#capture-down-while-the-session-is-active) |
+| Dashboard shows a red "capture(s) failed ... forged window-list attempt(s)" line, or `events` lists `capture_failed` / `capture_tamper` | [capture_failed and capture_tamper events](#capture_failed-and-capture_tamper-events) |
+| Dashboard says "Heartbeat watcher not running" | [Heartbeat watcher not running](#heartbeat-watcher-not-running) |
 | Rows show `unknown` | [Captures shown as unknown](#captures-shown-as-unknown) |
 | Timers listed but never fire after late login | [Timers not armed](#timers-not-armed) |
 | `health` prints "DB was auto-recovered" or exits 4 | [DB was auto-recovered](#db-was-auto-recovered) |
@@ -31,14 +34,13 @@ Read this when something looks wrong on a running familymon install: stale behav
 
 ## Stale code after upgrade
 
-**Symptom.** Behaviour matches the previous version after a package upgrade. Long-running user units (capture loop, dashboard) keep old code in memory.
+**Symptom.** Behaviour matches the previous version after a package upgrade. Long-running units (capture supervisor, dashboard) keep old code in memory.
 
 **Diagnose (read-only).** Compare when the unit last started with when the package was installed.
 
 ```bash
-# as the kid (or: systemctl --user -M kid@ ...)
-systemctl --user show familymon-capture.service -p ActiveEnterTimestamp
-systemctl --user show familymon-dashboard.service -p ActiveEnterTimestamp
+systemctl show familymon-capture.service -p ActiveEnterTimestamp
+systemctl show familymon-dashboard.service -p ActiveEnterTimestamp
 # package install time
 dpkg-query -W -f='${Version}\n' familymon
 ls -l --time=birth /opt/familymon/venv 2>/dev/null || ls -ld /opt/familymon/venv
@@ -46,54 +48,119 @@ ls -l --time=birth /opt/familymon/venv 2>/dev/null || ls -ld /opt/familymon/venv
 
 If `ActiveEnterTimestamp` is older than the install, the unit runs old code.
 
-**Why.** The deb's postinst runs `daemon-reload` and restarts `familymon-capture.service` and `familymon-dashboard.service` for each logged-in user, but only if they are active, with errors suppressed. It always exits 0. It does not touch system-scope units. Users not logged in at install time are not restarted. Timer-driven oneshots (classify, heartbeat, notify, enforce, chargeback, webblock) pick up new code on their next run.
+**Why.** The deb's postinst runs `daemon-reload`, enables the units and restarts `familymon-capture.service` and `familymon-dashboard.service`, with errors suppressed. It always exits 0. A unit skipped by its `ConditionPathExists` (no `policy.yaml`, no `dashboard.env`) is not running, so it is not stale. Timer-driven oneshots (classify, heartbeat, notify, enforce, chargeback, webblock) pick up new code on their next run.
 
-**Fix.** Restart the stale unit as the kid's user manager. Needs root, or run as `kid`.
+**Fix.** Restart the stale unit, root.
 
 ```bash
-systemctl --user -M kid@ restart familymon-capture.service
-systemctl --user -M kid@ restart familymon-dashboard.service
+sudo systemctl restart familymon-capture.service
+sudo systemctl restart familymon-dashboard.service
 ```
 
-**Safety.** Restarting the capture loop re-scans the Steam library (done once at startup) and leaves a short capture gap, which `health` may report as a gap over 300 s only if it lasts that long.
+**Safety.** Restarting the capture supervisor re-scans the Steam library and leaves a short capture gap, which `health` may report as a gap over 300 s only if it lasts that long.
 
 **Undo.** Not applicable.
 
 ## Heartbeat stale or DOWN
 
-**Symptom.** `familymonctl heartbeat-once` exits non-zero, `familymon-heartbeat.service` shows failed, or the dashboard banner says "Capture stale" or "Capture DOWN".
+**Symptom.** `sudo familymonctl heartbeat-once` exits non-zero, `familymon-heartbeat.service` shows failed, or the dashboard banner says "Capture stale" or "Capture DOWN".
 
-| Status | Meaning (age of newest capture) | Exit code | Banner |
+| Status | Meaning | Exit code | Banner |
 |---|---|---|---|
-| `ok` | under 180 s | 0 | "Capture: OK" |
+| `ok` | newest capture under 180 s old | 0 | "Capture: OK" |
+| `idle` | the kid has no graphical session and nothing fresh | 0 | "Not logged in" |
 | `stale` | 180 s to under 600 s | 1 | "Capture stale" |
-| `dead` | 600 s or more | 2 | "Capture DOWN" |
+| `dead` | 600 s or more | 2 | "Capture DOWN" (with "while the session is active" etc. when the session is known) |
 | `never` | no captures at all | 3 | "No captures yet" |
+| `watcher_down` (dashboard only) | newest heartbeat event older than 5 min | n/a | "Heartbeat watcher not running" |
 
-**Diagnose (read-only).** Run as `kid`.
+**Diagnose (read-only).**
 
 ```bash
-familymonctl health                       # last capture age, largest gap 24h
-systemctl --user status familymon-capture.service
-journalctl --user -u familymon-capture.service -n 50 --no-pager
-systemctl --user list-timers 'familymon-*'
+sudo familymonctl health                       # last capture age, largest gap 24h
+systemctl status familymon-capture.service
+journalctl -u familymon-capture.service -n 50 --no-pager
+systemctl list-timers 'familymon-*'
+sudo familymonctl events --kind heartbeat      # the recorded status and session per minute
 ```
 
 Check these in order:
 
-1. Is the capture service active? It is not enabled by the package. Enable per user with `systemctl --user enable --now familymon-capture.service`.
-2. Is the kid's graphical session active and unlocked? Locked or inactive sessions still record window metadata but skip screenshots (`session_locked` / `session_inactive`), so captures continue. A dead status with no captures at all points at the service, not the session.
-3. Did the laptop sleep? `health` warns "`>5 min gap exists in the last 24h` (crash, or laptop sleep)".
-4. Is the heartbeat timer itself armed? Heartbeat events are written to the user's DB. A gap in heartbeat events means the watcher itself was down.
-5. Is the capture failing every tick? Look for "capture tick failed" in the journal. The loop logs it and continues. KWin window enumeration has a 3 s timeout and returns an empty list on failure. A `RuntimeError` at startup means `org.familymon.WindowSink` could not be owned on the session bus.
+1. Is the kid logged in at all? `idle` / "Not logged in" is normal overnight: no session, nothing to capture. The supervisor skips the tick and records nothing. (`loginctl list-sessions`.)
+2. Is the capture service active? `systemctl status familymon-capture.service`. If it shows "inactive (dead)" with a failed condition, `/var/lib/familymon/policy.yaml` does not exist: create it and `sudo systemctl restart familymon-capture.service`.
+3. Is the kid's graphical session active and unlocked? Locked or inactive sessions still record window metadata but skip screenshots (`session_locked` / `session_inactive`), so captures continue.
+4. Did the laptop sleep? `health` warns "`>5 min gap exists in the last 24h` (crash, or laptop sleep)".
+5. Is capture failing every tick while the session is open? See [capture_failed and capture_tamper events](#capture_failed-and-capture_tamper-events).
 
-**Fix.** Start or restart the capture service. If it restarts and fails, read the journal. The unit has `Restart=on-failure`, `RestartSec=10`.
+**Fix.** Start or restart the capture service. If it restarts and fails, read the journal. The unit has `Restart=always`, `RestartSec=10`.
 
 ```bash
-systemctl --user restart familymon-capture.service
+sudo systemctl restart familymon-capture.service
 ```
 
-Note the heartbeat is currently a user timer, so it is down whenever the kid's user manager is down. Moving it to a root service is noted in code as future work.
+## Capture DOWN while the session is active
+
+**Symptom.** The dashboard says "Capture DOWN while the session is active" (or "Capture stale ... session is active"). The heartbeat is `dead` or `stale` and its `session` field is `active`. The kid is logged in and capture is not landing.
+
+**Diagnose (read-only).** The kid cannot stop the supervisor (root system unit), so either it is broken or the kid is interfering with ticks.
+
+```bash
+systemctl status familymon-capture.service
+journalctl -u familymon-capture.service -n 80 --no-pager
+sudo familymonctl events --kind capture_failed --kind capture_tamper
+loginctl list-sessions
+```
+
+1. Service not running or restarting: read the journal for the reason (missing `policy.yaml` or monitored user, crash). Fix and restart it.
+2. Service running, `capture_failed` events every minute: the probe cannot get the KWin window list from the kid's session. Read the `error` field (see the next section).
+3. A text-console login or a session that has no KWin (`session` not `active`, or a Wayland socket missing): nothing to capture, and the supervisor reports the session state, not a fault.
+4. Neither events nor captures: the heartbeat timer or supervisor loop is wedged. `sudo systemctl restart familymon-capture.service`.
+
+**Parent decides** what to do about a kid who is deliberately breaking capture. Report the events (times, counts) rather than speculating; a log-out, a KWin restart or a crash of the compositor also produces them.
+
+## capture_failed and capture_tamper events
+
+**Symptom.** The dashboard shows a red line such as "3 capture(s) failed while the session was open; 1 forged window-list attempt(s) rejected", or `sudo familymonctl events` lists these kinds.
+
+```bash
+sudo familymonctl events --day 2026-10-19 --kind capture_failed --kind capture_tamper
+```
+
+| Event | Data | Meaning |
+|---|---|---|
+| `capture_failed` | `error`, `session` | A tick ran while the kid had a session, but the probe failed or the KWin window list never arrived. No capture row and no screenshot were written for that tick |
+| `capture_tamper` | `sink_rejected`, `session` | A window-list push to the sink was rejected: it came from the wrong D-Bus sender or carried the wrong nonce. Something other than KWin's own script tried to deliver a window list |
+
+Common `capture_failed` errors:
+
+| `error` | Likely cause |
+|---|---|
+| `no session bus` | The session ended between the logind check and the probe: log-out, usually harmless |
+| `probe timed out after 45s` | KWin or the session was hung, or the probe was killed and restarted slowly |
+| `probe exited N: ...` | The probe crashed or was killed. The last lines of its stderr follow; a repeated `Killed` or exit 137 at the same cadence suggests something is killing it |
+| `could not start the probe: ...` | `setpriv` failed (user removed, or `setpriv` missing: it comes with util-linux) |
+| `KWin window list unavailable` | KWin did not deliver the list: KWin restarting, the sink name held by another process, or an interfered script |
+
+**Diagnose.** Establish facts first. A few scattered `capture_failed` events around log-out, suspend/resume, a KWin crash or a Plasma restart are noise. A sustained run (every minute for a long stretch while the session is `active`), or any `capture_tamper`, is worth the parent's attention. Check the timestamps against `loginctl` session history and `journalctl -b -u familymon-capture.service`.
+
+**Fix.** There is nothing to repair for scattered events. For a persistent run: confirm KWin is running in the kid's session, then `sudo systemctl restart familymon-capture.service`. For `capture_tamper`: nothing prevents a same-user process from trying, and the sink rejected it, so no forged data was stored. Tell the parent; **the parent decides** how to respond. Never relax monitoring or add an exception because the kid asks. See [../develop/tamper-resistance.md](../develop/tamper-resistance.md).
+
+## Heartbeat watcher not running
+
+**Symptom.** The dashboard banner says "Heartbeat watcher not running": the newest `heartbeat` event is more than 5 minutes old.
+
+**Diagnose (read-only).**
+
+```bash
+systemctl list-timers 'familymon-heartbeat.*'
+systemctl status familymon-heartbeat.service
+journalctl -u familymon-heartbeat.service -n 30 --no-pager
+sudo familymonctl events --kind heartbeat | tail -5
+```
+
+If the machine was just off or asleep, wait a few minutes. Otherwise the timer is disabled or the service is failing (a non-zero exit is expected for stale/dead and does not stop the timer). The kid cannot disable it, so this means a service problem or someone with root.
+
+**Fix.** `sudo systemctl enable --now familymon-heartbeat.timer`.
 
 ## Captures shown as unknown
 
@@ -101,12 +168,12 @@ Note the heartbeat is currently a user timer, so it is down whenever the kid's u
 
 **Diagnose (read-only).** Distinguish three cases.
 
-1. **Not yet classified.** Rows without a classification show as `unknown` on the dashboard. The classify timer runs every 5 minutes (first run 2 min after the timer is activated). Check:
+1. **Not yet classified.** Rows without a classification show as `unknown` on the dashboard. The classify timer runs every 5 minutes (first run 2 min after boot). Check:
 
    ```bash
-   familymonctl health          # "classified 24h" percentage
-   systemctl --user list-timers familymon-classify.timer
-   systemctl --user status familymon-classify.service
+   sudo familymonctl health          # "classified 24h" percentage
+   systemctl list-timers familymon-classify.timer
+   systemctl status familymon-classify.service
    ```
 
 2. **Timer never armed** after a late login. See [Timers not armed](#timers-not-armed).
@@ -114,16 +181,16 @@ Note the heartbeat is currently a user timer, so it is down whenever the kid's u
 
 **Fix.**
 
-- Case 1 and 2: run classify as `kid`. It is idempotent and only labels rows without a classification.
+- Case 1 and 2: run classify as root. It is idempotent and only labels rows without a classification.
 
   ```bash
-  familymonctl classify
+  sudo familymonctl classify
   ```
 
 - To relabel history after a classification rule or list change:
 
   ```bash
-  familymonctl classify --redo
+  sudo familymonctl classify --redo
   ```
 
   `--redo` deletes classifications whose source is `heuristic`, `domain` or `game_process` and recomputes them. Other sources are kept. `--limit` is ignored with `--redo`. Relabelling rewrites history, so tell the parent first.
@@ -134,28 +201,27 @@ Note the heartbeat is currently a user timer, so it is down whenever the kid's u
 
 ## Timers not armed
 
-**Symptom.** A user timer exists and is enabled, but never fires. Captures stay unclassified, no heartbeat events appear, no notifications. It happens when the user logged in long after boot.
+**Symptom.** A timer exists but never fires. Captures stay unclassified, no heartbeat events appear, no notifications.
 
-**Background.** Earlier timers used `OnBootSec`, which counts from boot. If the user manager started hours later, the timer never armed, and an unclean-shutdown incident once left hours of captures unclassified. The shipped user timers use `OnActiveSec` (classify 2 min, heartbeat 1 min, notify 30 s) plus `OnUnitActiveSec`. System-scope `familymon-enforce.timer` still uses `OnBootSec=5min`, which is fine because the system manager starts at boot.
+**Background.** Every timer is a system timer now, armed by the system manager at boot, so the old failure (a user timer that never armed when the kid logged in long after boot) cannot happen. A timer that does not fire is disabled, was removed by hand, or its service is skipped by a `ConditionPathExists` (no `/var/lib/familymon/policy.yaml`).
 
 **Diagnose (read-only).**
 
 ```bash
-systemctl --user list-timers --all 'familymon-*'     # NEXT column must not be empty
-systemctl --user cat familymon-classify.timer        # confirm OnActiveSec, not OnBootSec
+systemctl list-timers --all 'familymon-*'     # NEXT column must not be empty
+systemctl status familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer
+systemctl cat familymon-classify.timer        # check for local drop-ins
 ```
-
-If `cat` shows `OnBootSec`, the installed unit file is old or locally overridden. Check for drop-ins in the `cat` output.
 
 **Fix.**
 
 ```bash
-systemctl --user daemon-reload
-systemctl --user enable --now familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer
-familymonctl classify        # catch up immediately
+sudo systemctl daemon-reload
+sudo systemctl enable --now familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer
+sudo familymonctl classify        # catch up immediately
 ```
 
-Enabling is not done by the package.
+The package enables these on every install and upgrade, so a disabled timer means someone with root disabled it. Reinstalling the package (or running the `enable` above) restores it.
 
 ## DB was auto-recovered
 
@@ -172,8 +238,8 @@ Monitoring continues in every case.
 **Diagnose (read-only).**
 
 ```bash
-familymonctl health                      # shows method, backup path, salvaged tables
-ls -l ~kid/.local/state/familymon/ | grep corrupt
+sudo familymonctl health                      # shows method, backup path, salvaged tables
+sudo ls -l /var/lib/familymon/ | grep corrupt
 ```
 
 Exit codes from `health`: 2 is a privacy violation (checked first), 4 is integrity not ok.
@@ -198,24 +264,24 @@ Exit codes from `health`: 2 is a privacy violation (checked first), 4 is integri
    ls -l /usr/share/applications/familymon.desktop     # NoDisplay=true
    ```
 
-2. Is the notify timer armed?
+2. Is the notify timer armed, and is the kid logged in? The tick runs as root and delivers into the kid's session; with no session there is nothing to deliver to (`sudo familymonctl schedule notify-tick --test` prints "no session to notify").
 
    ```bash
-   systemctl --user list-timers familymon-notify.timer
-   journalctl --user -u familymon-notify.service -n 30 --no-pager
+   systemctl list-timers familymon-notify.timer
+   journalctl -u familymon-notify.service -n 30 --no-pager
    ```
 
-3. Does the schedule exist? `notify-tick` exits silently if there is no schedule file. `familymonctl schedule show` prints it (read-only).
+3. Does the schedule exist? `notify-tick` exits silently if there is no schedule file. `sudo familymonctl schedule show` prints it (read-only).
 4. Is the block flagged `notify`? Only `notify: true` blocks get start notifications. Each fires at most once per day (`notified.json`). Live warnings fire only during a `school` block, once per cooldown (default 5 minutes) per lesson and category (`warned.json`).
-5. Is Plasma configured to show popups only for apps with a desktop entry, or is Do Not Disturb on? Check the Plasma notification history rather than taking a screenshot of the session.
-6. Root-side notices (lesson close) use `runuser` and the user's bus at `/run/user/<uid>/bus`. If the bus is missing the notice is dropped silently.
+5. Is Plasma configured to show popups only for apps with a desktop entry, or is Do Not Disturb on? Did the kid turn familymon's notifications off in Plasma settings? Notifications are advisory and the kid can mute them; monitoring and enforcement are unaffected. Check the Plasma notification history rather than taking a screenshot of the session.
+6. All notices (block start, warnings, lesson close) are delivered with `runuser` on the user's bus at `/run/user/<uid>/bus`. If the bus is missing the notice is not delivered. A block-start notice or warning is marked done (`notified.json`, `warned.json`) only when it was delivered, so it is retried on the next tick.
 
 **Fix.**
 
-- Send a sample as `kid`, inside the session:
+- Send a sample into the kid's session (warn them first), as root:
 
   ```bash
-  familymonctl schedule notify-tick --test
+  sudo familymonctl schedule notify-tick --test
   ```
 
   This sends "Schedule notifications are working." and exits.
@@ -404,7 +470,7 @@ The dry run scans processes read-only and kills nothing.
 **Check.**
 
 - Not closed outside a lesson: expected.
-- Not closed during a lesson: is `web_block.enabled` true, `forbid_other_browsers` true, and `familymon-webblock.timer` active? Is the browser in the built-in list? If not, add a `forbid_apps` mask. **Parent decides.**
+- Not closed during a lesson: is `web_block.enabled` true, `forbid_other_browsers` true, and `familymon-webblock.timer` active (`systemctl status familymon-webblock.timer`)? Is the browser in the built-in list? If not, add a `forbid_apps` mask. **Parent decides.**
 - Look for a `lesson_close` event in the root audit DB (`/var/lib/familymon/captures.db`). It records user, subject, apps, pids and which needed SIGKILL.
 - If the kid says they received no notice, see [Notifications not popping up](#notifications-not-popping-up). A missing bus at `/run/user/<uid>/bus` makes the notice silent.
 
@@ -417,20 +483,20 @@ The dry run scans processes read-only and kills nothing.
 **Diagnose (read-only).**
 
 ```bash
-systemctl --user status familymon-dashboard.service
-journalctl --user -u familymon-dashboard.service -n 30 --no-pager
+systemctl status familymon-dashboard.service
+journalctl -u familymon-dashboard.service -n 30 --no-pager
 ls -l /etc/familymon/dashboard.env
 ss -ltn | grep 8765
 ```
 
 Check:
 
-1. **Credentials.** The app raises `RuntimeError` at startup if `FAMILYMON_DASH_USER` or `FAMILYMON_DASH_PASS` is unset or empty. The unit reads them from the optional `/etc/familymon/dashboard.env` (not shipped). Create it with both variables. Recommended ownership root, mode 0644. Note that a 0644 file is world-readable, so treat the password as low-value, shared and for a trusted LAN only.
-2. **Not enabled.** The package does not enable it: `systemctl --user enable --now familymon-dashboard.service`.
+1. **Credentials.** The app raises `RuntimeError` at startup if `FAMILYMON_DASH_USER` or `FAMILYMON_DASH_PASS` is unset or empty. The unit reads them from `/etc/familymon/dashboard.env` (not shipped; systemd reads it as root before dropping to the `familymon` user). Create it with both variables, owner root:root, mode 0600. If the file does not exist the unit is skipped by `ConditionPathExists` and shows as inactive, not failed.
+2. **Not started.** The package enables the unit, but it only starts once the env file exists: `sudo systemctl restart familymon-dashboard.service`.
 3. **Bind address.** Default is `127.0.0.1`, reachable only from the same machine. Set `FAMILYMON_DASH_BIND` (for example `0.0.0.0`) for LAN access, or pass `--bind`. Port is `FAMILYMON_DASH_PORT`, default 8765.
 4. **401.** HTTP Basic, realm `familymon`, one shared user and password. All routes require it.
 5. **No TLS.** The server serves plain HTTP. **Safety:** exposing it beyond localhost sends credentials and the kid's activity metadata unencrypted. The dashboard shows metadata only. No screenshot route exists.
-6. **Wrong data.** The dashboard reads the running user's own DB. Run it as the account whose DB you want to see.
+6. **Wrong data or no data.** The dashboard runs as `familymon` with `FAMILYMON_STATE_DIR=/var/lib/familymon` and opens the DB read-only through group read access. If it shows nothing, check `ls -ld /var/lib/familymon` (root:`familymon` 0750) and that `captures.db` is group-readable (`sudo ls -l /var/lib/familymon/captures.db`).
 7. **Stale code** after upgrade: see [Stale code after upgrade](#stale-code-after-upgrade).
 
 `/d/<day>` with an invalid date returns 400. `/api/captures` and `/api/stats` do not catch the parse error for an invalid `day`, so they should return a server error (500). This is read from the code, not exercised.
@@ -438,7 +504,7 @@ Check:
 **Fix.** Create or correct `dashboard.env`, then:
 
 ```bash
-systemctl --user restart familymon-dashboard.service
+sudo systemctl restart familymon-dashboard.service
 ```
 
 ## Unsure claims
@@ -447,6 +513,5 @@ Items in this file that are not fully pinned down by the code, so verify before 
 
 - Exact procedure to make timekpr re-read `/etc/timekpr/timekpr.conf` (not in familymon code).
 - Whether other Flatpak games need a different pattern. Only the `.*bwrap.*sober.*[Roblox]` example and "appears as the bwrap wrapper" are in the code.
-- HTTP status for `/api/*` with an invalid `day` (code does not handle it, so likely 500; not exercised).
 - How long timekpr takes to apply a play-time-left change (not defined in familymon code).
-- Whether the deb creates `/var/lib/familymon` or a `familymon` system user. No script found.
+- Whether probe failures with `probe exited N` have a single cause: the message is the tail of the probe's stderr and varies.

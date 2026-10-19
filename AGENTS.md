@@ -14,7 +14,8 @@ familymon is local-first parental-control software for a Linux laptop (KDE Plasm
 | Check that a change worked, or that everything is healthy | [docs/operate/verify-and-health.md](docs/operate/verify-and-health.md) |
 | Find out why something doesn't work | [docs/operate/troubleshoot.md](docs/operate/troubleshoot.md) |
 | Look up an exact command, option, config key, path, unit or event | [docs/reference/cli.md](docs/reference/cli.md), [docs/reference/config.md](docs/reference/config.md), [docs/reference/files-and-units.md](docs/reference/files-and-units.md) |
-| Change the code | [docs/develop/architecture.md](docs/develop/architecture.md), [docs/develop/testing-and-shipping.md](docs/develop/testing-and-shipping.md) |
+| Understand what the child can and can't tamper with | [docs/develop/tamper-resistance.md](docs/develop/tamper-resistance.md) |
+| Change the code | [docs/develop/architecture.md](docs/develop/architecture.md), [docs/develop/testing-and-shipping.md](docs/develop/testing-and-shipping.md), and [docs/develop/tamper-resistance.md](docs/develop/tamper-resistance.md) before touching capture, units, state or permissions |
 
 `README.md` gives the human overview and the list of known gaps. `docs/PLAN.md` is the original design plan, kept for its reasoning; parts of it are superseded.
 
@@ -31,7 +32,7 @@ familymon is local-first parental-control software for a Linux laptop (KDE Plasm
 
 ## Operating conventions
 
-- Commands run on the kid's laptop, usually over SSH from the parent's machine. System-wide state (policy, grants, Chrome policy) needs root. The child's own state (schedule, captures) lives in their `~/.local/state/familymon/`, so run schedule commands as the child: `sudo -u kid -H familymonctl …`.
+- Commands run on the kid's laptop, usually over SSH from the parent's machine. Everything runs as root and all state lives in `/var/lib/familymon`, which the child cannot read, so every operator command is `sudo familymonctl …` (schedule, health, events, enforce, all of it). Never run commands as the child and never touch their `~/.local/state/familymon`; that directory is no longer used. Every production unit is a system unit, so use `systemctl` and `journalctl -u`, not `--user`.
 - The docs use placeholders: the monitored account is `kid`, the laptop is `kid-laptop`, addresses come from `192.0.2.0/24`, and the timezone is `Europe/Berlin`. Substitute the real values for the family you're helping, and never write those real values back into this repository.
 - After any change, report to the parent in plain words: what changed (file, key, old and new value), what the preview said, how you verified it, and how to undo it.
 - Facts here are checked against the code. Statements about timekpr-next behaviour that familymon's code can't show (for example its ~3 s poll) are marked as observed with a specific timekpr version. If code and docs disagree, the code wins: fix the doc in the same change.

@@ -150,6 +150,7 @@ Optional later: when the GPU is otherwise idle and there's no game running, allo
 
 **Component placement.**
 - `familymon-capture` runs as a **systemd user service in the kid's session.** Required: on Wayland, the screenshot APIs (`org.kde.KWin.ScreenShot2`, `xdg-desktop-portal-kde` ScreenCast) need user-session D-Bus access. A separate **root-level heartbeat watcher** notices if capture stops and surfaces it on the dashboard (this is the realistic-friction tamper signal — not prevention, but detection).
+  *(Superseded: capture and the heartbeat now run as root system units with a per-tick helper in the kid's session; see [develop/tamper-resistance.md](develop/tamper-resistance.md).)*
 - `familymon-analyze` runs as a **root system service** under the `familymon` user, accessing the queue read-only. Wakes on signal, drains, sleeps.
 - `familymon-dashboard` runs as a root system service, bound to the LAN IP.
 - ~~`gamemode-listener` (small Python helper inside `familymon-analyze`) subscribes to `com.feralinteractive.GameMode` on the user bus and sends `SIGSTOP`/`SIGCONT` to the analyze process on `GameRegistered`/`GameUnregistered`.~~ **Reverted** (see the Architecture note): trusted game detection (`capture/games.py`, installed Steam library) supplies the `game_running` signal instead; using it to pause the analyze worker is a deferred phase-3 task.

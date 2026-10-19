@@ -4,51 +4,57 @@ Read this when you need to find where a piece of familymon state lives (a file, 
 
 Placeholders used throughout: the monitored account is `kid`, the laptop is `kid-laptop`, the parent is "the parent".
 
-**Safety.** The capture database and screenshots hold the kid's activity. Read them only as the parent's agent, never copy them into public places, and never take raw screenshots of the kid's session for diagnostics (that bypasses messaging redaction). The root chargeback job opens the kid's database read-only (SQLite URI `mode=ro`).
+**Safety.** The capture database and screenshots hold the kid's activity. Read them only as the parent's agent, never copy them into public places, and never take raw screenshots of the kid's session for diagnostics (that bypasses messaging redaction). The chargeback job, `familymonctl events` and the dashboard open the database read-only (SQLite URI `mode=ro`). Everything under `/var/lib/familymon` is root-owned and unreadable by the kid.
 
 ## 1. State directory resolution
 
 `state_dir()` (`familymon/config.py`) resolves in this order:
 
-1. `$FAMILYMON_STATE_DIR`, if set.
-2. `/var/lib/familymon`, if the effective uid is 0.
-3. `${XDG_STATE_HOME:-~/.local/state}/familymon`.
+1. `$FAMILYMON_STATE_DIR`, if set (the dashboard unit sets it to `/var/lib/familymon`).
+2. `/var/lib/familymon`, if the effective uid is 0 (production).
+3. `${XDG_STATE_HOME:-~/.local/state}/familymon` (dev runs only).
 
-`user_state_dir(user)` is `<home of user>/.local/state/familymon`. Root-side reconcilers use it to read the kid's data. It ignores `FAMILYMON_STATE_DIR` and `XDG_STATE_HOME`.
+`monitored_user()` is `$FAMILYMON_USER`, else the `user:` key of `policy.yaml`.
 
-A command run as your own login user (dev or inspection) therefore sees your own `~/.local/state/familymon`, not the kid's and not `/var/lib/familymon`. `familymonctl status` prints the resolved state dir, DB path and screenshots dir (read-only).
+`user_state_dir(user)` is `<home of user>/.local/state/familymon`, where releases before the root deployment kept the kid's data. Only `familymonctl migrate-state` reads it now. Nothing in production writes there.
+
+A command run as your own login user (dev or inspection) sees your own `~/.local/state/familymon`, not `/var/lib/familymon`. Run production commands with `sudo`. `familymonctl status` prints the resolved state dir, DB path and screenshots dir (read-only).
 
 ## 2. Files and directories
 
-### 2.1 Per-user state: `~kid/.local/state/familymon/`
+### 2.1 State: `/var/lib/familymon/`
 
-Written by the kid's user units (capture, classify, heartbeat, notify).
+Owner root, group `familymon`, mode 0750, created by the postinst. Written only by root jobs (capture supervisor, classify, heartbeat, notify, enforce, chargeback, web-block). The monitored user cannot open it. `storage/perms.py` applies the modes below whenever root creates or opens the files.
 
-| Path | Written by | Contents | Permissions |
-|---|---|---|---|
-| `captures.db` (plus `-wal`, `-shm`) | `capture-run`, `capture-once`, `classify`, `heartbeat-once` | SQLite DB, see section 4 | file 0600 in a 0700 directory, re-asserted on every open |
-| `captures.db.corrupt-<YYYYmmdd-HHMMSS>` | DB self-recovery | the damaged original, kept, never deleted; `-journal`, `-wal`, `-shm` siblings are renamed with it | as moved |
-| `screenshots/<YYYY-MM-DD>/<capture_id>.png` | capture loop | one PNG per persisted capture; the DB stores only the path | root and day directories chmod 0700 on every write; the PNG uses the umask default but sits inside the 0700 directories |
-| `schedule.yaml` | `schedule import`, `schedule refresh` | keys `timezone`, `blocks`, optional `breaks` | parent directory created 0700 |
-| `notified.json` | `schedule notify-tick` | `{"<ISO date>": ["HH:MM\|subject", ...]}`; overwritten with only today's key; makes block-start notifications fire at most once per day | default |
-| `warned.json` | `schedule notify-tick` | `{"<key>": "<ISO timestamp>"}`; entries from other days pruned; drives the live-warning cooldown | default |
-
-A screenshot is saved only when image bytes exist and the capture is not `same_as_prev`. Screenshots are skipped for suspended sessions and for messaging windows that could not be redacted (see section 4.1).
-
-**No retention exists.** No code prunes `capture`, `classification` or `event` rows or screenshot files. Disk use grows until the parent cleans up manually. `familymonctl health` reports PNG count and size. Parent decides retention; if you delete screenshots, leave the DB rows (the DB stores paths only, and the dashboard reports `screenshot_on_disk` as a boolean).
-
-### 2.2 Root state: `/var/lib/familymon/`
-
-Used by `enforce ...` commands run as root (and by the system timers).
+Group-readable by `familymon` (the read-only dashboard's group): dirs 0750, files 0640, owner root.
 
 | Path | Written by | Contents |
 |---|---|---|
-| `policy.yaml` | the parent (hand-edited) | enforcement policy, see [config.md](config.md). If missing, `enforce` fails and points to `/usr/share/familymon/policy_example.yaml`. |
-| `grants.json` | `enforce grant`, `enforce revoke` | `{"grants":[{user, day, start, end, created_at, note}]}`. Directory created 0700; file uses the default mode. Expired or other-day grants are pruned when active grants are evaluated (`GrantStore.active`) and when one is added; `enforce revoke` rewrites the file without the user's grants for today. |
-| `playtime_charges.json` | `enforce chargeback` | `{user: {day, last_capture_id, charged_seconds_today}}`. `charged_seconds_today` resets on a new day; the `last_capture_id` watermark is kept across days. |
-| `captures.db` | `enforce` commands | the root audit DB; holds the `Event` rows written by enforcement (section 5). Not the kid's capture data. |
+| `captures.db` (plus `-journal`, `-wal`, `-shm`) | `capture-supervise`, `classify`, `heartbeat-once`, enforcement commands | SQLite DB, see section 4. The only database; holds captures, classifications and all events (section 5) |
+| `captures.db.corrupt-<YYYYmmdd-HHMMSS>` | DB self-recovery | the damaged original, kept, never deleted; `-journal`, `-wal`, `-shm` siblings are renamed with it |
+| `screenshots/<YYYY-MM-DD>/<capture_id>.png` | capture supervisor | one PNG per persisted capture; the DB stores only the path. Root-only: day directories 0700, files 0600 |
+| `schedule.yaml` | `schedule import`, `schedule refresh`, or by hand | keys `timezone`, `blocks`, optional `breaks`. Read by every consumer. `schedule import` and `schedule refresh` leave it root:`familymon` 0640 so the dashboard can read it; a hand-written file needs the same mode |
 
-`enforce chargeback` reads the kid's capture DB via `user_state_dir(user)`, strictly read-only (`mode=ro`); it is the only root job found in the code that reads that DB. `enforce web-block` reads the kid's `schedule.yaml` from the same directory (unless `--schedule FILE` is given).
+Root only (0600, owner root):
+
+| Path | Written by | Contents |
+|---|---|---|
+| `policy.yaml` | the parent (hand-edited) | enforcement policy and monitored `user:`, see [config.md](config.md). If missing, `enforce` fails and points to `/usr/share/familymon/policy_example.yaml`, and the capture, notify, enforce, chargeback and webblock units skip themselves (`ConditionPathExists`) |
+| `grants.json` | `enforce grant`, `enforce revoke` | `{"grants":[{user, day, start, end, created_at, note}]}`. Expired or other-day grants are pruned when active grants are evaluated (`GrantStore.active`) and when one is added; `enforce revoke` rewrites the file without the user's grants for today |
+| `playtime_charges.json` | `enforce chargeback` | `{user: {day, last_capture_id, charged_seconds_today}}`. `charged_seconds_today` resets on a new day; the `last_capture_id` watermark is kept across days, but is reset for today if it is above the DB's newest capture id (DB replaced, recovered or migrated) |
+| `notified.json` | `schedule notify-tick` | `{"<ISO date>": ["HH:MM\|subject", ...]}`; overwritten with only today's key; makes block-start notifications fire at most once per day. An entry is written only when the notification was delivered |
+| `warned.json` | `schedule notify-tick` | `{"<key>": "<ISO timestamp>"}`; entries from other days pruned; drives the live-warning cooldown. Written only when the warning was delivered |
+| `known_games.json` | capture supervisor, `enforce games --forget` | game directories seen installed, so hiding a game's files does not remove its PlayTime mask. List with `enforce games` |
+
+Migration leftovers (root-only): `migrated/<user>-<YYYYmmdd-HHMMSS>/` (the old per-user state directory, kept as a backup by `migrate-state`) and the marker `.migrated-from-<user>`.
+
+Runtime (not in the state dir): `/run/familymon/kwin/` (root, 0711, created by the unit's `RuntimeDirectory=familymon`) holds the current tick's KWin window-list script, `winlist-<random>.js`, mode 0644, deleted after the tick.
+
+A screenshot is saved only when image bytes exist and the capture is not `same_as_prev`. Screenshots are skipped for suspended sessions, for messaging windows that could not be redacted, and when the KWin window list did not arrive (see section 4.1).
+
+**No retention exists.** No code prunes `capture`, `classification` or `event` rows or screenshot files. Disk use grows until the parent cleans up manually. `familymonctl health` reports PNG count and size. Parent decides retention; if you delete screenshots, leave the DB rows (the DB stores paths only, and the dashboard reports `screenshot_on_disk` as a boolean).
+
+`enforce chargeback` and `familymonctl events` open the DB strictly read-only (`mode=ro`); the dashboard does the same through its group access. `enforce web-block` reads `schedule.yaml` from this directory (unless `--schedule FILE` is given).
 
 ### 2.3 Configuration lookup
 
@@ -72,21 +78,29 @@ Bundled defaults: `messaging_apps.yaml`, `game_apps.yaml`, `schedule_extras.yaml
 | `/usr/share/familymon/policy_example.yaml` | example policy | 0644 |
 | `/usr/share/familymon/chrome-extension/{familymon.crx,update.xml,id,version}` | built lesson-block extension | 0644 |
 | `/usr/share/applications/familymon.desktop` | `NoDisplay=true`; its name is passed as the `desktop-entry` hint so Plasma shows familymon notifications as popups | 0644 |
-| `/usr/lib/systemd/user/familymon-*` | user units (section 3) | 0644 |
-| `/usr/lib/systemd/system/familymon-*` | system units (section 3) | 0644 |
+| `/usr/lib/systemd/system/familymon-*` | system units (section 3). The package ships no user units | 0644 |
 
-Not shipped: `/etc/familymon/dashboard.env` (optional, you create it; section 3.3). The package does not create a `familymon` system user or `/var/lib/familymon` (no script does; the code mentions a system user only in a comment). Root creates `/var/lib/familymon` implicitly when `enforce` runs as root; verify it exists before relying on it.
+Not shipped: `/etc/familymon/dashboard.env` (you create it; section 3.4) and `policy.yaml` (you copy it from the example).
 
-The deb has no prerm or postrm. The postinst runs only on `configure`: for each logged-in user it runs `systemctl --user -M <user>@ daemon-reload`, then restarts `familymon-capture.service` and `familymon-dashboard.service` if active (best effort, always exits 0). It does not enable anything and does not touch system-scope units.
+**postinst** (runs only on `configure`, always exits 0):
+
+1. Creates the `familymon` system user and group (`adduser --system --group --no-create-home`) if missing.
+2. Forces `/etc/familymon/dashboard.env`, if present, to root:root 0600.
+3. Makes `/var/lib/familymon` root:`familymon` 0750.
+4. Retires per-user units of earlier releases: stops them in every running user manager, kills old `familymon.cli capture-run|dashboard` processes, and deletes `familymon-*` symlinks (enable and mask links) under every home's `~/.config/systemd/user` with `find -delete`, which does not follow symlinks.
+5. Runs `familymonctl migrate-state` if `/var/lib/familymon/policy.yaml` exists (prints a re-run hint on failure).
+6. `systemctl daemon-reload`, enables `familymon-capture.service`, `familymon-dashboard.service` and the six timers (classify, heartbeat, notify, enforce, chargeback, webblock), restarts the two services and starts the timers.
+
+**prerm** (on `remove` only): `systemctl disable --now` for the two services and six timers. There is no postrm or preinst. `Depends` includes `adduser`, `util-linux` (for `runuser`), `procps` and `findutils`.
 
 ### 2.5 Other paths
 
 | Path | Purpose |
 |---|---|
 | `/etc/opt/chrome/policies/managed/familymon.json` | Chrome managed policy, written by `enforce web-block` as root (mode 0644). Written atomically via `/etc/opt/chrome/policies/.familymon.json.tmp` then rename. Deleted when `web_block` is disabled in `policy.yaml`. |
-| `/etc/familymon/dashboard.env` | optional env file with `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS`; the unit's comment recommends root-owned, mode 0644 |
-| `familymon_winlist_*.js` (temp) | KWin enumeration script, deleted on close |
-| `familymon_shot_*.png` (temp) | per-tick spectacle output, deleted after reading |
+| `/etc/familymon/dashboard.env` | env file with `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS` (and optionally bind and port); root:root 0600, read by systemd as root. The dashboard unit is skipped if it is missing |
+| `/run/familymon/kwin/winlist-<random>.js` (temp) | the supervisor's per-tick KWin enumeration script, deleted after the tick (dev `capture-run` uses `familymon_winlist_*.js` in `/tmp`) |
+| `familymon_shot_*.png` (temp) | per-tick spectacle output, in the capture unit's private `/tmp`, deleted after reading |
 | `${XDG_STATE_HOME:-~/.local/state}/familymon-deps-up.log` | dev-machine nightly dependency-upgrade log, trimmed to last 1000 lines |
 | `<repo>/.git/uv-upgrade.lock` | dev-machine lock for `scripts/uv-upgrade.sh` |
 | `dist/familymon_<VERSION>_amd64.deb`, `dist/repo` | deb build output and local apt repo staging (dev machine) |
@@ -98,7 +112,8 @@ Safety: the extension signing key is generated per deployment (`openssl genrsa 2
 
 | Variable | Effect |
 |---|---|
-| `FAMILYMON_STATE_DIR` | overrides the state directory |
+| `FAMILYMON_STATE_DIR` | overrides the state directory (set by the dashboard unit) |
+| `FAMILYMON_USER` | the monitored account; default is `user:` in `policy.yaml` |
 | `FAMILYMON_CONFIG_DIR` | first location searched for config YAML |
 | `FAMILYMON_INTERVAL` | capture interval in seconds, default 60 |
 | `FAMILYMON_DASH_USER`, `FAMILYMON_DASH_PASS` | required dashboard credentials (HTTP Basic, realm `familymon`); the app refuses to start if either is unset or empty |
@@ -108,61 +123,57 @@ Safety: the extension signing key is generated per deployment (`openssl genrsa 2
 
 ## 3. systemd units
 
-The deb installs these units but **enables none of them**. Enable by hand. Units hard-coded to a developer checkout under `deploy/systemd/user/` are dev-only and are not packaged; do not use them for installs.
+All production units are system units, installed to `/usr/lib/systemd/system/` and enabled by the postinst. The deb ships no user units. Dev-only user units under `deploy/systemd/user/` (hard-coded to a developer checkout) exist for running `familymonctl capture-run` inside your own session; they are not packaged, so do not use them for installs.
 
 ### 3.1 Unit table
 
-| Unit | Scope | Schedule / trigger | Runs |
-|---|---|---|---|
-| `familymon-capture.service` | user (`kid`) | `WantedBy=graphical-session.target`, `After`/`PartOf` the same; `Restart=on-failure`, `RestartSec=10`, `Nice=10` | `/usr/bin/familymonctl capture-run` |
-| `familymon-classify.timer` | user | `OnActiveSec=2min`, `OnUnitActiveSec=5min`, `Persistent=true` | triggers `familymon-classify.service` |
-| `familymon-classify.service` | user | oneshot, `Nice=15` | `familymonctl classify` |
-| `familymon-heartbeat.timer` | user | `OnActiveSec=1min`, `OnUnitActiveSec=1min`, `Persistent=true` | triggers `familymon-heartbeat.service` |
-| `familymon-heartbeat.service` | user | oneshot; non-zero exit marks the unit failed | `familymonctl heartbeat-once` |
-| `familymon-notify.timer` | user | `OnActiveSec=30s`, `OnUnitActiveSec=1min`, `AccuracySec=15s`, `Persistent=false` | triggers `familymon-notify.service` |
-| `familymon-notify.service` | user | oneshot; needs the session bus for `notify-send` | `familymonctl schedule notify-tick` |
-| `familymon-dashboard.service` | user | `WantedBy=default.target`, `Restart=on-failure`, `RestartSec=10`, `EnvironmentFile=-/etc/familymon/dashboard.env` | `familymonctl dashboard` |
-| `familymon-enforce.timer` | system (root) | `OnBootSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`, `Persistent=true` | triggers `familymon-enforce.service` |
-| `familymon-enforce.service` | system (root) | oneshot, `After=timekpr.service`; exit 3 means the apply guard refused (unit shows failed) | `familymonctl enforce apply` |
-| `familymon-chargeback.timer` | system (root) | `OnActiveSec=3min`, `OnUnitActiveSec=5min`, `Persistent=true` | triggers `familymon-chargeback.service` |
-| `familymon-chargeback.service` | system (root) | oneshot, `After=timekpr.service` | `familymonctl enforce chargeback` |
-| `familymon-webblock.timer` | system (root) | `OnCalendar=*-*-* *:*:00` (every minute), `AccuracySec=5s`, `Persistent=false` | triggers `familymon-webblock.service` |
-| `familymon-webblock.service` | system (root) | oneshot | `familymonctl enforce web-block` |
+All run as root except the dashboard.
 
-User timers use `OnActiveSec`, not `OnBootSec`. A user timer based on `OnBootSec` never armed when the kid logged in long after boot, and captures stayed unclassified. Unclassified rows show as `unknown`; `familymonctl classify --redo` relabels history (see [cli.md](cli.md)). The system enforce timer keeps `OnBootSec` because system timers do arm at boot.
+| Unit | Schedule / trigger | Runs |
+|---|---|---|
+| `familymon-capture.service` | `WantedBy=multi-user.target`, `After=systemd-logind.service`, `ConditionPathExists=/var/lib/familymon/policy.yaml`; `Restart=always`, `RestartSec=10`, `Nice=10`, `PrivateTmp=yes`, `RuntimeDirectory=familymon` (mode 0755) | `/usr/bin/familymonctl capture-supervise` |
+| `familymon-classify.timer` | `OnBootSec=2min`, `OnUnitActiveSec=5min`, `Persistent=true` | triggers `familymon-classify.service` |
+| `familymon-classify.service` | oneshot, `Nice=15` | `familymonctl classify` |
+| `familymon-heartbeat.timer` | `OnBootSec=1min`, `OnUnitActiveSec=1min`, `Persistent=true` | triggers `familymon-heartbeat.service` |
+| `familymon-heartbeat.service` | oneshot; non-zero exit marks the unit failed | `familymonctl heartbeat-once` |
+| `familymon-notify.timer` | `OnCalendar=*-*-* *:*:05` (every minute, 5 s past), `AccuracySec=5s`, `Persistent=false` | triggers `familymon-notify.service` |
+| `familymon-notify.service` | oneshot, `ConditionPathExists` policy; delivers into the kid's session through `runuser` | `familymonctl schedule notify-tick` |
+| `familymon-dashboard.service` | `User=familymon`, `Group=familymon`, `EnvironmentFile=/etc/familymon/dashboard.env`, `Environment=FAMILYMON_STATE_DIR=/var/lib/familymon`, `ConditionPathExists=/etc/familymon/dashboard.env`, `Restart=on-failure`, `RestartSec=10`, sandboxed (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `ProtectKernelTunables`, `ProtectKernelModules`, `ProtectControlGroups`, `RestrictSUIDSGID`), `WantedBy=multi-user.target` | `familymonctl dashboard` |
+| `familymon-enforce.timer` | `OnBootSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`, `Persistent=true` | triggers `familymon-enforce.service` |
+| `familymon-enforce.service` | oneshot, `After=timekpr.service`, `ConditionPathExists` policy; exit 3 means the apply guard refused (unit shows failed) | `familymonctl enforce apply` |
+| `familymon-chargeback.timer` | `OnActiveSec=3min`, `OnUnitActiveSec=5min`, `Persistent=true` | triggers `familymon-chargeback.service` |
+| `familymon-chargeback.service` | oneshot, `After=timekpr.service`, `ConditionPathExists` policy | `familymonctl enforce chargeback` |
+| `familymon-webblock.timer` | `OnCalendar=*-*-* *:*:00` (every minute), `AccuracySec=5s`, `Persistent=false` | triggers `familymon-webblock.service` |
+| `familymon-webblock.service` | oneshot, `ConditionPathExists` policy | `familymonctl enforce web-block` |
 
-### 3.2 Enable, inspect, undo
+A service skipped by `ConditionPathExists` shows as inactive, not failed. A skipped service is not retried: after creating `policy.yaml`, run `sudo systemctl restart familymon-capture.service` (the timer-driven ones pick it up on their next tick). The capture unit is the only long-running supervisor; the kid cannot stop or mask any of these.
 
-User units (run as `kid`, or with `systemctl --user -M kid@`). Needs no root when run in the kid's own session; the capture unit must run inside the kid's graphical session.
+`PrivateTmp=yes` on the capture unit means the probe's temporary screenshot file (written by `spectacle` as the kid) sits in a `/tmp` the kid cannot see.
 
-```
-systemctl --user enable --now familymon-capture.service
-systemctl --user enable --now familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer
-systemctl --user status familymon-capture.service
-systemctl --user list-timers
-```
-
-System units (root):
+### 3.2 Inspect and undo
 
 ```
-sudo systemctl enable --now familymon-enforce.timer familymon-chargeback.timer familymon-webblock.timer
-sudo systemctl list-timers 'familymon-*'
+systemctl status familymon-capture.service
+systemctl list-timers 'familymon-*'
+journalctl -u familymon-capture.service --since '-30min'
 ```
 
-Undo: `systemctl [--user] disable --now <unit>`. Safety: disabling the capture, heartbeat or enforce timers stops monitoring or enforcement for the kid. Parent decides; tell the parent first. Enabling `familymon-enforce.timer` applies the policy hourly and will revert manual changes to allowed hours (use `enforce grant`; see [cli.md](cli.md)). Disabling `familymon-webblock.timer` leaves the last-written Chrome policy file in place until `enforce web-block` runs again.
+Undo: `sudo systemctl disable --now <unit>` (the next package upgrade re-enables it). Safety: disabling the capture, heartbeat or enforce units stops monitoring or enforcement for the kid. Parent decides; tell the parent first. `familymon-enforce.timer` applies the policy hourly and will revert manual changes to allowed hours (use `enforce grant`; see [cli.md](cli.md)). Disabling `familymon-webblock.timer` leaves the last-written Chrome policy file in place until `enforce web-block` runs again.
 
 ### 3.3 Stale code after upgrade
 
-Long-running user units (capture loop, dashboard) can keep running old code after a package upgrade. The postinst restarts them for logged-in users. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time:
+Long-running units (capture supervisor, dashboard) can keep running old code after a package upgrade. The postinst restarts them. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time:
 
 ```
-systemctl --user show familymon-capture.service -p ActiveEnterTimestamp
+systemctl show familymon-capture.service -p ActiveEnterTimestamp
 dpkg-query -W -f='${Version}\n' familymon
 ```
 
 ### 3.4 Dashboard notes
 
-`familymon-dashboard.service` runs as the user whose DB it reads. It needs `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS` (in `/etc/familymon/dashboard.env` or the environment). Auth is HTTP Basic with no TLS; the only exposure control is the bind address (default `127.0.0.1`). Routes: `GET /`, `GET /d/{YYYY-MM-DD}`, `GET /api/captures?day=`, `GET /api/stats?day=`. It serves metadata only, never image bytes. Whether the dashboard is intended to run for the kid or for the parent is not settled in the code; it reads the DB of the account it runs as.
+`familymon-dashboard.service` runs as the unprivileged `familymon` user with `FAMILYMON_STATE_DIR=/var/lib/familymon`. It opens the DB read-only and reads the schedule through group access (it never reads screenshot files); it cannot read `policy.yaml` or anything else root-only. It needs `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS` from `/etc/familymon/dashboard.env` (root:root 0600, read by systemd before privileges drop). Auth is HTTP Basic with no TLS; the only exposure control is the bind address (default `127.0.0.1`). Routes: `GET /`, `GET /d/{YYYY-MM-DD}`, `GET /api/captures?day=`, `GET /api/stats?day=`. It serves metadata only, never image bytes.
+
+The status banner reads the newest `heartbeat` event (falling back to plain capture freshness when there is none): OK, stale, "Capture DOWN" (with "while the session is <state>" when known), "Not logged in" (`idle`), "Heartbeat watcher not running" (newest heartbeat older than 5 minutes), or no captures yet. A red line under it appears when the day has `capture_failed` or `capture_tamper` events: "N capture(s) failed while the session was open; M forged window-list attempt(s) rejected", pointing at `sudo familymonctl events --day YYYY-MM-DD`.
 
 ## 4. Database schema
 
@@ -187,7 +198,7 @@ Engine: SQLAlchemy over SQLite (`familymon/storage/models.py`), tables created w
 | `game_running` | bool | installed game process detected (Steam library plus curated list) |
 | `same_as_prev` | bool | the screenshot is a perceptual-hash duplicate of a recent one and was not saved |
 
-`screenshot_skipped_reason` values: `session_inactive`, `session_locked` (logind says the graphical session is not active or is locked), `messaging_app` (redaction could not be done safely, so no screenshot was kept), or NULL. Window metadata is still recorded on skipped ticks. Session detection is fail-open: if logind cannot be queried, capture continues.
+`screenshot_skipped_reason` values: `session_inactive`, `session_locked` (logind says the graphical session is not active or is locked), `messaging_app` (redaction could not be done safely, so no screenshot was kept), `window_list_unavailable` (the KWin window list did not arrive, so no screenshot was taken; redaction needs the geometry), or NULL. Window metadata is still recorded on skipped ticks. Session detection is fail-open: if logind cannot be queried, capture continues.
 
 Privacy invariant: a capture with `messaging_present` true must not have a saved screenshot unless `screenshot_redacted` is true. `familymonctl health` counts violations over all time.
 
@@ -231,41 +242,43 @@ At open, missing columns are added with `ALTER TABLE` (idempotent): `capture.mes
 
 Every open goes through `make_engine`, which:
 
-1. Creates the DB parent directory 0700 and chmods the DB, `-wal`, `-shm` to 0600.
+1. Creates the DB parent directory and secures the DB, `-journal`, `-wal`, `-shm` and the directory (`storage/perms.py`): as root in production they become root-owned and group-readable by `familymon` (files 0640, directory 0750); in a dev run they are 0600 and 0700.
 2. Runs an integrity check first: `PRAGMA quick_check(5)` on a read-only connection. A "locked" or "busy" error counts as healthy.
 3. On damage, moves the file aside as `captures.db.corrupt-<YYYYmmdd-HHMMSS>` (siblings too) and recovers into a fresh DB, trying in order: `sqlite3 <damaged> .recover` piped to a new DB (needs the `sqlite3` binary), Python `iterdump`, then an empty DB. The damaged file is never deleted.
 4. Records a `db_recovered` event.
 
-Consequence: any command that opens the DB, including `health`, `conflicts` and the dashboard, can create files, change modes or trigger recovery. They are read-only in intent, not in effect.
+Consequence: any command that opens the DB read-write, including `health` and `conflicts`, can create files, change modes or trigger recovery. They are read-only in intent, not in effect. The dashboard, `events` and chargeback use `make_readonly_engine`, which does none of that.
 
-Inspect safely (read-only, as the DB owner or root):
+Inspect safely (read-only, as root):
 
 ```
-sqlite3 'file:/home/kid/.local/state/familymon/captures.db?mode=ro' 'select kind, count(*) from event group by kind;'
+sudo sqlite3 'file:/var/lib/familymon/captures.db?mode=ro' 'select kind, count(*) from event group by kind;'
 ```
 
 Safety: the DB contains window titles. Query aggregates where possible; do not paste rows into public places.
 
 ## 5. Event kinds
 
-The only code paths that insert `event` rows are the ones below (enforce commands share an `_audit` helper in `familymon/cli.py`). Only `db_recovered` is read back by code (`health`). The `Event` model docstring mentions "capture errors", but no emitter exists.
+The only code paths that insert `event` rows are the ones below (enforce commands share an `_audit` helper in `familymon/cli.py`). They all land in the one DB. Read them with `sudo familymonctl events [--day D] [--kind K]...` (heartbeats are left out unless `--kind heartbeat` is given). `db_recovered` is read back by `health`; `heartbeat` by the dashboard banner; `capture_failed` and `capture_tamper` by the dashboard's red line.
 
 | kind | Written by | Which DB | `data` keys | Meaning |
 |---|---|---|---|---|
-| `heartbeat` | `heartbeat-once` (user timer) | the kid's own DB | `status`, `age_seconds`, `last_capture_at` | Freshness of the newest capture. `status` is `ok` (under 180 s), `stale` (180 to under 600 s), `dead` (600 s or more), `never` (no captures). A gap in heartbeat events means the watcher itself was down. |
+| `heartbeat` | `heartbeat-once` (root timer, every minute) | the DB | `status`, `session`, `age_seconds`, `last_capture_at` | Freshness of the newest capture and the kid's session. `status` is `ok` (under 180 s), `stale` (180 to under 600 s), `dead` (600 s or more), `never` (no captures), `idle` (no graphical session, nothing fresh). `session` is `active`, `locked`, `inactive`, `none` or `unknown` (logind). A gap in heartbeat events means the watcher timer was down; the dashboard shows that as "Heartbeat watcher not running" after 5 minutes. |
+| `capture_failed` | capture supervisor | the DB | `error`, `session` | A tick ran while the kid had a session, but the probe failed (timeout, crash, could not start) or the KWin window list did not arrive. No capture was written for that tick. See [../operate/troubleshoot.md](../operate/troubleshoot.md). |
+| `capture_tamper` | capture supervisor | the DB | `sink_rejected`, `session` | The window-list sink rejected a push: wrong D-Bus sender or wrong nonce. Something other than KWin's own script tried to deliver a window list. |
 | `db_recovered` | DB open (`make_engine`) | the DB being opened | `method`, `finding`, `damaged_backup`, `salvaged_tables` | A damaged DB was set aside and rebuilt. `method` is `sqlite3-recover`, `iterdump` or `fresh`. `health` prints it. |
-| `playtime_chargeback` | `enforce chargeback` | root DB | `user`, `captures`, `seconds`, `last_capture_id`, `capped` | Browser-game time was charged against PlayTime. `capped` is true when the per-run cap (1800 s) applied. |
-| `grant_hours` | `enforce grant` (`--until`) | root DB | `user`, `day`, `start`, `end`, `note` | A date-bound extension of allowed hours was granted. |
-| `grant_playtime` | `enforce grant` (`--playtime`) | root DB | `user`, `seconds`, `note` | Extra PlayTime was granted. |
-| `web_block` | `enforce web-block` | root DB | `user`, `active`, `subject`, `domains` | The Chrome policy file was changed on disk by this run (for example a lesson started or ended, or the config changed). `active` is true while a lesson blocks; `domains` is the blocklist size (0 when inactive). |
-| `lesson_close` | `enforce web-block` sweep | root DB | `user`, `subject`, `apps`, `pids`, `forced` | During a lesson, forbidden processes were closed (SIGTERM, then SIGKILL after a 3 s grace). `apps` are rule names, `pids` all closed pids, `forced` the subset of pids that survived SIGTERM and got SIGKILL. Forbidden means other browsers, Chrome started with `--disable-extensions`, or `web_block.forbid_apps` matches. |
+| `playtime_chargeback` | `enforce chargeback` | the DB | `user`, `captures`, `seconds`, `last_capture_id`, `capped` | Browser-game time was charged against PlayTime. `capped` is true when the per-run cap (1800 s) applied. |
+| `grant_hours` | `enforce grant` (`--until`) | the DB | `user`, `day`, `start`, `end`, `note` | A date-bound extension of allowed hours was granted. |
+| `grant_playtime` | `enforce grant` (`--playtime`) | the DB | `user`, `seconds`, `note` | Extra PlayTime was granted. |
+| `web_block` | `enforce web-block` | the DB | `user`, `active`, `subject`, `domains` | The Chrome policy file was changed on disk by this run (for example a lesson started or ended, or the config changed). `active` is true while a lesson blocks; `domains` is the blocklist size (0 when inactive). |
+| `lesson_close` | `enforce web-block` sweep | the DB | `user`, `subject`, `apps`, `pids`, `forced` | During a lesson, forbidden processes were closed (SIGTERM, then SIGKILL after a 3 s grace). `apps` are rule names, `pids` all closed pids, `forced` the subset of pids that survived SIGTERM and got SIGKILL. Forbidden means other browsers, Chrome started with `--disable-extensions`, or `web_block.forbid_apps` matches. |
 
-`heartbeat-once` exit codes: `ok` 0, `stale` 1, `dead` 2, `never` 3. `health` exit codes: 2 on a privacy violation, 4 if DB integrity is not ok (the privacy check runs first).
+`heartbeat-once` exit codes: `ok` 0, `idle` 0, `stale` 1, `dead` 2, `never` 3. `health` exit codes: 2 on a privacy violation, 4 if DB integrity is not ok (the privacy check runs first).
 
 ## 6. Other state sources worth knowing
 
 - **timekpr-next** holds the real time and app enforcement state (the global PlayTime switches in `/etc/timekpr/timekpr.conf`, and per-user settings). familymon reads it over the system D-Bus (`enforce show`) and writes it through `timekpra`. See [../operate/troubleshoot.md](../operate/troubleshoot.md) for gotchas. Per `timekpr_admin.py`, `timekpra --getuserinfo` prints every enabled boolean as False, which is why familymon reads state over D-Bus. familymon never reads or writes `/etc/timekpr/timekpr.conf`; the PlayTime switch names are in [../operate/troubleshoot.md](../operate/troubleshoot.md).
-- **KWin and logind** are the live sources for window lists and session state. familymon registers the session-bus name `org.familymon.WindowSink` (path `/sink`) to receive window lists from a temporary KWin script. Any same-uid process on the session bus could forge that call (known limitation, noted in code).
+- **KWin and logind** are the live sources for window lists and session state. Each capture probe registers the session-bus name `org.familymon.WindowSink` (path `/sink`) to receive the window list from that tick's KWin script. The sink accepts a push only from KWin's own bus connection carrying the tick's nonce; anything else is rejected and recorded as `capture_tamper`. The script is unloaded after each tick. A same-uid process can still squat the bus name or kill the probe, which makes the tick fail (`capture_failed`); that is detected, not prevented. See [../develop/tamper-resistance.md](../develop/tamper-resistance.md).
 - **Chrome policy** is a derived artifact: delete or regenerate it with `enforce web-block`, never hand-edit it (the minute timer overwrites it). The document always carries a base policy (`DnsOverHttpsMode`, `EncryptedClientHelloEnabled`, `DeveloperToolsAvailability`); `URLBlocklist` and `URLAllowlist` are present only while a lesson blocks. When the extension is packaged, the force-install entry and its `3rdparty` settings are present whenever `web_block` is enabled (with `active` false outside lessons). Incognito and Guest are disabled per `web_block.block_private`.
 - **Extension files** under `/usr/share/familymon/chrome-extension/` must carry a higher `version` on each rebuild or Chrome keeps the old one. Chrome fetches `update.xml` and the `.crx` through `file://` URLs.
 
@@ -273,13 +286,14 @@ The only code paths that insert `event` rows are the ones below (enforce command
 
 | Question | Look at |
 |---|---|
-| What was the kid doing at time T? | `capture` + `classification` in `~kid/.local/state/familymon/captures.db` |
-| Is capture alive? | newest `heartbeat` event; `familymonctl health`; `systemctl --user status familymon-capture.service` |
+| What was the kid doing at time T? | `capture` + `classification` in `/var/lib/familymon/captures.db` |
+| Is capture alive? | newest `heartbeat` event; `sudo familymonctl health`; `systemctl status familymon-capture.service` |
+| Did capture fail or get tampered with? | `sudo familymonctl events --kind capture_failed --kind capture_tamper` |
 | Why is a row `unknown`? | `classification.evidence_text` and `source`; unclassified rows have no classification row yet (classify timer lag) |
 | Was a screenshot redacted or skipped? | `capture.screenshot_redacted`, `screenshot_skipped_reason`, `messaging_present` |
-| Current lessons and breaks | `~kid/.local/state/familymon/schedule.yaml`; extras in `/etc/familymon/schedule_extras.yaml` |
+| Current lessons and breaks | `/var/lib/familymon/schedule.yaml`; extras in `/etc/familymon/schedule_extras.yaml` |
 | Enforcement policy | `/var/lib/familymon/policy.yaml` |
-| One-off extensions | `/var/lib/familymon/grants.json`; audit in root DB `grant_hours` / `grant_playtime` events |
+| One-off extensions | `/var/lib/familymon/grants.json`; audit in the `grant_hours` / `grant_playtime` events |
 | PlayTime charged today | `/var/lib/familymon/playtime_charges.json` |
 | Did a notification fire today? | `notified.json`, `warned.json` (and the desktop's notification history; never a raw screenshot) |
 | Web-block state | `/etc/opt/chrome/policies/managed/familymon.json`; `web_block` and `lesson_close` events |
@@ -287,7 +301,4 @@ The only code paths that insert `event` rows are the ones below (enforce command
 
 ## 8. Unverified or unsettled points
 
-- Whether the package or any script creates `/var/lib/familymon` and a `familymon` system user: none found.
-- Whether the dashboard is meant for the kid's or the parent's account: unit is user-scope, reads the running user's DB.
-- `GET /api/captures` and `/api/stats` with an invalid `day` likely return a server error (unhandled `ValueError`); inferred, not verified. `/d/{day}` returns 400.
 - Exact timestamp timezone handling differs between tables (declared tz-aware; some code writes and compares local-naive values).

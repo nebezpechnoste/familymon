@@ -16,18 +16,18 @@ Conventions: monitored account `kid`, parent "the parent", laptop `kid-laptop`, 
 
 | What | File | Who writes it | How a change takes effect |
 |---|---|---|---|
-| Time, game and web-block policy | `policy.yaml` in the state dir. Root run: `/var/lib/familymon/policy.yaml`. Template: `/usr/share/familymon/policy_example.yaml` | root | `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks`: `familymonctl enforce apply` (or the hourly `familymon-enforce.timer` if enabled). `games.charge_browser_games*`: next `familymon-chargeback.timer` tick. `web_block.*`: next `familymon-webblock.timer` tick (every minute) |
-| Weekly lesson schedule | `~kid/.local/state/familymon/schedule.yaml` | the `kid` user (import, refresh) or a hand-written file owned by `kid` | Read live by every consumer. No restart |
-| Parent extras for the schedule | `/etc/familymon/schedule_extras.yaml` (dpkg conffile) | root | Only when `familymonctl schedule refresh` (or `schedule import`) is run as `kid`. Edits alone are not picked up |
-| Redaction list | `/etc/familymon/messaging_apps.yaml` | root | Restart `familymon-capture.service` (inferred: loaded once at construction) |
-| Curated game list | `/etc/familymon/game_apps.yaml` | root | Restart `familymon-capture.service` for capture detection. This list does not feed timekpr: the PlayTime masks come from the kid's installed Steam library plus `games.extra_masks`, rescanned on each `enforce plan`/`apply` |
+| Time, game and web-block policy | `policy.yaml` in the state dir. Root run: `/var/lib/familymon/policy.yaml`. Template: `/usr/share/familymon/policy_example.yaml` | root | `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks`: `familymonctl enforce apply` (or the hourly `familymon-enforce.timer`). `games.charge_browser_games*`: next `familymon-chargeback.timer` tick. `web_block.*`: next `familymon-webblock.timer` tick (every minute) |
+| Weekly lesson schedule | `/var/lib/familymon/schedule.yaml` | root (`sudo familymonctl schedule import` or `refresh`) or a hand-written file | Read live by every consumer. No restart |
+| Parent extras for the schedule | `/etc/familymon/schedule_extras.yaml` (dpkg conffile) | root | Only when `familymonctl schedule refresh` (or `schedule import`) is run (as root). Edits alone are not picked up |
+| Redaction list | `/etc/familymon/messaging_apps.yaml` | root | Next tick: every capture probe is a new process and loads the list when it starts |
+| Curated game list | `/etc/familymon/game_apps.yaml` | root | Re-read when the supervisor scans the game library (at start and every 30 min); `sudo systemctl restart familymon-capture.service` applies it at once. This list does not feed timekpr: the PlayTime masks come from the kid's installed Steam library plus `games.extra_masks`, rescanned on each `enforce plan`/`apply` |
 | Domain categories, title brands | bundled `domains_starter.yaml`, `title_brands.yaml`. Override by creating `/etc/familymon/<name>` (not installed by default) | root | Next tick of the consumer (web-block every minute, `classify` every 5 minutes) |
 
 Facts that cause mistakes:
 
 - `policy.yaml` and `schedule.yaml` do **not** honour `/etc/familymon` or `$FAMILYMON_CONFIG_DIR`.
 - `policy.yaml` has **no unknown-key detection**. A typo such as `web_blocks:` is silently ignored and web blocking stays off. Always confirm the effect with a preview.
-- `enforce web-block` reads the schedule from `~kid/.local/state/familymon/schedule.yaml` (override: `--schedule FILE`). A root-run `schedule import` writes `/var/lib/familymon/schedule.yaml`, which web-block does not read. Run schedule commands as `kid`.
+- There is one schedule file, `/var/lib/familymon/schedule.yaml`, and every consumer (web-block, notify, conflicts, the dashboard) reads it. All schedule commands run as root (`sudo familymonctl schedule ...`). `enforce web-block --schedule FILE` can still evaluate a different file.
 - Always quote times in YAML (`"09:00"`). An unquoted value may not load as a string.
 - Day names in `schedule.yaml` are English (`Monday`). Day keys in `policy.yaml` per-day maps are **lowercase** (`monday`, plus `default`).
 - A per-day map needs `default` or all seven days. A bare duration scalar applies to all days (valid for `daily_limits`, not for `allowed_hours`).
@@ -73,8 +73,8 @@ Ask about **whole-hour limits** explicitly. `allowed_hours` works in whole hours
 | Always block a site in lessons | `policy.yaml` | `web_block.extra_domains` | `enforce web-block --dry-run` | yes |
 | Close a non-browser app in lessons | `policy.yaml` | `web_block.forbid_apps` | `enforce web-block --dry-run` | yes |
 | Private browsing | `policy.yaml` | `web_block.block_private: lessons\|always\|off` | `enforce web-block --dry-run` | yes |
-| Lesson timetable (Kings InterHigh) | `schedule.yaml` | `familymonctl schedule import FILE` | `schedule show` | no (run as `kid`) |
-| Lesson timetable (PDF, screenshot, typed) | `schedule.yaml` | hand-written `blocks` | `schedule show` | no (run as `kid`) |
+| Lesson timetable (Kings InterHigh) | `schedule.yaml` | `sudo familymonctl schedule import FILE` | `schedule show` | no |
+| Lesson timetable (PDF, screenshot, typed) | `schedule.yaml` | hand-written `blocks` | `schedule show` | no |
 | Subject the kid does not attend | `schedule_extras.yaml` | `exclude_subjects` then `schedule refresh` | `schedule show` | edit: yes |
 | Extra routine block, no conflict monitoring | `schedule_extras.yaml` | `blocks` (non-`school` category) then `schedule refresh` | `schedule show` | edit: yes |
 | Notification at block start | `schedule.yaml` or extras | `notify: true` on the block | `schedule notify-tick --test` for delivery only | no |
@@ -82,7 +82,7 @@ Ask about **whole-hour limits** explicitly. `allowed_hours` works in whole hours
 | One-off later bedtime tonight | grants | `enforce grant kid --until HH:MM` | `enforce grants`, `enforce show kid` after | yes |
 | Extra game minutes today | grants | `enforce grant kid --playtime 20m` | none (see example 9) | yes |
 | Warn but do not block | `policy.yaml` | leave the category out of `web_block.categories` (live warnings still fire) | `enforce web-block --dry-run` | yes |
-| Show the parent what happened | CLI | `sudo -u kid -H familymonctl conflicts [--day YYYY-MM-DD]` (reads the invoking user's schedule and capture DB), dashboard | read-only | no (run as `kid`) |
+| Show the parent what happened | CLI | `sudo familymonctl conflicts [--day YYYY-MM-DD]` (reads the schedule and capture DB in `/var/lib/familymon`), dashboard | read-only | no |
 
 Not configurable: the always-allowed hosts `meet.google.com`, `teams.microsoft.com`, `zoom.us`. If the parent asks to change them, say it is not possible in the current code.
 
@@ -186,10 +186,10 @@ Parent decides whether video is blocked. Video in a lesson is still flagged by l
 
 Parent: sends a PDF or a photo of the timetable.
 
-There is no importer for PDFs. Transcribe it into `schedule.yaml` by hand, as `kid`, then read it back to the parent.
+There is no importer for PDFs. Transcribe it into `schedule.yaml` by hand, as root, then read it back to the parent.
 
 1. Extract each lesson as day, start, end, subject. If any cell is unreadable, **ask**. Do not guess times.
-2. Write the file (owned by `kid`, directory `~kid/.local/state/familymon`):
+2. Write the file `/var/lib/familymon/schedule.yaml` as root (for example `sudoedit`; make it readable by group `familymon`, mode 0640, so the dashboard can show it):
 
 ```yaml
 timezone: Europe/Berlin
@@ -201,11 +201,11 @@ blocks:
 
 Rules: `end` is exclusive. `day` is a full English day name. `category: school` makes the block conflict-monitored and web-blocked. `Schedule.load` does not check `end > start`, so check it yourself. A hand-written `school` block survives `schedule refresh`. An empty file loads as an empty schedule. A file that is not a mapping fails with a raw Python error rather than a friendly message.
 
-Preview and verify (as `kid`):
+Preview and verify:
 
 ```bash
-sudo -u kid -H familymonctl schedule show
-sudo familymonctl enforce web-block --dry-run --schedule ~kid/.local/state/familymon/schedule.yaml
+sudo familymonctl schedule show
+sudo familymonctl enforce web-block --dry-run
 ```
 
 Show the parent the grouped-by-day output and ask them to confirm against the PDF. The `schedule show` output ends with a block count. Compare it with your count of lessons. Undo: restore the previous file, or run `schedule import` with a supported export (it overwrites the file).
@@ -217,12 +217,12 @@ Note: `schedule import` overwrites everything. Do not run it over a hand-written
 Parent: "Here is the JSON from the school timetable API."
 
 ```bash
-sudo -u kid -H familymonctl schedule import timetable-week.json --format kingsinterhigh
+sudo familymonctl schedule import timetable-week.json --format kingsinterhigh
 ```
 
 The input is the JSON from `GET /student/api/timetable/week`. All imported lessons get `category: school`. Breaks from the API are not imported. Extras (exclusions, extra blocks, breaks) from `/etc/familymon/schedule_extras.yaml` are applied at the same time. The command prints the block count, school and extra counts, excluded subjects and break lines.
 
-Preview: there is no dry-run flag. Save a copy of the old file first (`cp ~kid/.local/state/familymon/schedule.yaml{,.bak-$(date +%F)}`), run the import, then `sudo -u kid -H familymonctl schedule show`. Verify the count and a few lessons with the parent. Re-import each term.
+Preview: there is no dry-run flag. Save a copy of the old file first (`sudo cp /var/lib/familymon/schedule.yaml{,.bak-$(date +%F)}`), run the import, then `sudo familymonctl schedule show`. Verify the count and a few lessons with the parent. Re-import each term.
 
 ### Example 6: Self-study blocks with notifications
 
@@ -239,20 +239,20 @@ blocks:
   - {day: Friday,    start: "14:00", end: "15:00", subject: Self-study, category: study, notify: true}
 ```
 
-The category `study` is a free string. Only `school` blocks are conflict-monitored and web-blocked. `notify: true` applies to every category: the desktop notification pops at block start (once per day per block), sent by the per-minute `familymon-notify.timer` in the kid's session.
+The category `study` is a free string. Only `school` blocks are conflict-monitored and web-blocked. `notify: true` applies to every category: the desktop notification pops at block start (once per day per block), sent by the per-minute `familymon-notify.timer` (root, delivered into the kid's session; it counts as done only if it was delivered).
 
 If you edit `blocks:` in an existing extras file, keep existing entries. Extras `blocks` must have `end > start`, or the load fails with a ValueError.
 
 Apply and preview:
 
 ```bash
-sudo -u kid -H familymonctl schedule refresh
-sudo -u kid -H familymonctl schedule show
+sudo familymonctl schedule refresh
+sudo familymonctl schedule show
 ```
 
 `refresh` requires an existing schedule and keeps only `school` blocks plus the extras. Hand-written non-`school` blocks in `schedule.yaml` that are not also in the extras are dropped.
 
-Verify delivery separately: `sudo -u kid -H familymonctl schedule notify-tick --test` sends a sample notification (needs the kid's session bus). Check the notification history in Plasma rather than taking a screenshot. If no popup appears, see [troubleshoot.md](troubleshoot.md).
+Verify delivery separately: `sudo familymonctl schedule notify-tick --test` sends a sample notification (needs the kid's session bus; prints "no session to notify" if they are not logged in). Check the notification history in Plasma rather than taking a screenshot. If no popup appears, see [troubleshoot.md](troubleshoot.md).
 
 Parent decides whether study time should be enforced like a lesson. If yes, use `category: school`, and say so in the plan, because then web blocking applies to that block.
 
@@ -269,9 +269,9 @@ exclude_subjects:
 Matching is case-insensitive on the block `subject`, so the string must equal the subject as it appears in `schedule show` (ignoring case). Confirm the exact spelling from `schedule show` first.
 
 ```bash
-sudo -u kid -H familymonctl schedule show      # note French blocks
-sudo -u kid -H familymonctl schedule refresh
-sudo -u kid -H familymonctl schedule show      # French blocks gone
+sudo familymonctl schedule show      # note French blocks
+sudo familymonctl schedule refresh
+sudo familymonctl schedule show      # French blocks gone
 ```
 
 Verify: the block count dropped by the number of French lessons. Undo: remove the entry and run `schedule import` again, because `refresh` cannot bring excluded lessons back (they are removed from the file). Tell the parent this before applying.
@@ -289,8 +289,8 @@ breaks:
 `end` is inclusive. `categories` defaults to `[school]`. The extras `breaks` list **replaces** the schedule's breaks, so include every break the parent wants, not only the new one. The imported lessons stay in the file.
 
 ```bash
-sudo -u kid -H familymonctl schedule refresh
-sudo -u kid -H familymonctl schedule show
+sudo familymonctl schedule refresh
+sudo familymonctl schedule show
 ```
 
 The output prints a `break:` line for each break. If the break covers today it adds "in progress — no lessons today". During a break, web blocking, live warnings, reminders and conflicts for those categories are suspended, and the dashboard shows a school-break banner.
@@ -357,11 +357,11 @@ web_block:
   categories: [social, games]
 ```
 
-Live warnings come from `schedule notify-tick` (per-minute user timer in the kid's session), independently of blocking. During a `school` block, if the active window is messaging, social, a game or streaming video, a notification "`<subject> — lesson in progress`" is shown, with a cooldown of 5 minutes per lesson and category (override with `--warn-cooldown`). The notification text says the sighting is logged, and it shows in `familymonctl conflicts` and the dashboard (derived from the captures, not a separate event row). Streaming video counts only if the title contains a known streaming brand.
+Live warnings come from `schedule notify-tick` (per-minute root timer, delivering into the kid's session), independently of blocking. During a `school` block, if the active window is messaging, social, a game or streaming video, a notification "`<subject> — lesson in progress`" is shown, with a cooldown of 5 minutes per lesson and category (override with `--warn-cooldown`). The notification text says the sighting is logged, and it shows in `familymonctl conflicts` and the dashboard (derived from the captures, not a separate event row). Streaming video counts only if the title contains a known streaming brand.
 
 Warnings only fire inside `school` blocks. They are disabled by `--no-warn`. The shipped `familymon-notify.service` runs `familymonctl schedule notify-tick` without that flag, so only a locally modified unit would turn them off.
 
-Preview: `sudo familymonctl enforce web-block --dry-run` shows the block set without messaging domains. Verify later with `sudo -u kid -H familymonctl conflicts --day 2026-10-19` as the parent reviews. Do not generate a conflict by opening a chat on the kid's laptop during a lesson to test, unless the parent agrees.
+Preview: `sudo familymonctl enforce web-block --dry-run` shows the block set without messaging domains. Verify later with `sudo familymonctl conflicts --day 2026-10-19` as the parent reviews. Do not generate a conflict by opening a chat on the kid's laptop during a lesson to test, unless the parent agrees.
 
 Parent decides if messaging is blocked, warned or untouched. Note that `meet.google.com`, `teams.microsoft.com` and `zoom.us` are never blocked.
 

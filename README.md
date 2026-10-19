@@ -50,8 +50,9 @@ Captures screenshots and window state every ~60 s, classifies activity using che
   liveness in the event log and the dashboard shows a status banner (OK /
   stale / DOWN / no captures yet) on every page. Catches the case where the
   capture loop has died — the timeline going quiet on its own is easy to miss
-  or misread as "nobody used the laptop." In production this will run as a
-  root service so it survives a teen stopping their own user units (phase 4).
+  or misread as "nobody used the laptop." In production it is a root system
+  timer the teen cannot stop; it asks logind whether the teen is logged in, so
+  an empty timeline with no session reads "Not logged in" instead of "DOWN".
 - Schedule extras: a parent-maintained `/etc/familymon/schedule_extras.yaml`
   is merged on every import — subjects to exclude from monitored time
   (self-paced work) and custom blocks (self-study, workout, …). Blocks in any
@@ -95,8 +96,10 @@ wall-clock ("a game was on screen for N of M school-hour minutes," independent
 of focus). The present-set data is now being recorded, so that upgrade has
 history to work with when built.
 
-Run it: `familymonctl capture-run` (collector), `familymonctl classify` (heuristics),
-`familymonctl dashboard` (viewer), `familymonctl health` (diagnostics).
+Run it: in production everything is a root system unit (see Packaging below);
+for a dev run inside your own session, `familymonctl capture-run` (collector),
+`familymonctl classify` (heuristics), `familymonctl dashboard` (viewer) and
+`familymonctl health` (diagnostics) work as before.
 
 **Phase 2 complete.** Logind session detection, multi-window classification,
 per-window messaging redaction (multi-monitor incl. mixed-DPI, native + web
@@ -104,8 +107,7 @@ chats), trusted game detection, school-schedule import, conflict detection,
 and the heartbeat watcher are all in. Later: pausing the
 VLM during play (phase 3 — the real resource gating; capture keeps running),
 z-order-aware partial redaction + per-URL web-chat detection, local VLM +
-Claude Code bootstrap labeling (phase 3), tamper-resistant root deployment
-(phase 4), enforcement via the timekpr-next policy driver + DNS/URL category
+Claude Code bootstrap labeling (phase 3), enforcement via the timekpr-next policy driver + DNS/URL category
 filter (phase 6, see below).
 
 ## Enforcement direction: timekpr-next + familymon
@@ -191,11 +193,11 @@ Operational notes learned from the live spike (timekpr-next 0.5.10):
 
 This is a parental-control tool with **disclosed monitoring** as a core principle. The intended deployment hands the laptop to a teen who has been told what is captured and what is not.
 
-**Acceptable use.** familymon is for parents supervising their own minor children, openly. It is not for covert monitoring of anyone: not partners, not employees, not adults, not children who haven't been told. Monitoring another adult's device without their knowledge is abuse and, in most places, a crime. The design reflects this. Capture runs as a visible user service, the "monitoring active" indicator is meant to stay visible, messaging windows are never captured to image, and nothing leaves the machine unless the parent sends it. Changes that hide the monitoring from the monitored person will not be accepted.
+**Acceptable use.** familymon is for parents supervising their own minor children, openly. It is not for covert monitoring of anyone: not partners, not employees, not adults, not children who haven't been told. Monitoring another adult's device without their knowledge is abuse and, in most places, a crime. The design reflects this. Capture runs as a visible system service, the "monitoring active" indicator is meant to stay visible, messaging windows are never captured to image, and nothing leaves the machine unless the parent sends it. Changes that hide the monitoring from the monitored person will not be accepted.
 
 Leak paths explicitly addressed:
 
-- `/var/lib/familymon/screenshots/` — mode 0700, auto-purged (14 d during bootstrap, 24 h steady-state).
+- `/var/lib/familymon/` — root:`familymon` 0750, so the monitored user cannot even list it. Screenshots (`screenshots/`) are root-only (dirs 0700, files 0600; the dashboard shows whether one exists, never the image); auto-purged (14 d during bootstrap, 24 h steady-state).
 - SQLite WAL / journal — `VACUUM` nightly; image bytes never stored in the DB, only paths.
 - Swap — must be disabled or encrypted on any host running familymon; otherwise screenshot bytes can land on disk uncontrolled.
 - `systemd-journal` — logs capture IDs only, never window titles of messaging apps or screenshot filenames.
@@ -212,10 +214,13 @@ just runs apt:
 
 1. `scripts/build-deb.sh` (dev machine) → `familymon_<ver>_amd64.deb`: a
    relocatable uv venv at `/opt/familymon/venv` frozen to the committed
-   `uv.lock`, `/usr/bin/familymonctl` wrapper, systemd user units (shipped
-   disabled; the parent enables per user), parent-editable conffiles in
-   `/etc/familymon/` (dpkg preserves local edits on upgrade), and
-   `policy_example.yaml` under `/usr/share/familymon/`.
+   `uv.lock`, `/usr/bin/familymonctl` wrapper, systemd **system** units (the
+   postinst enables and starts them; the package ships no user units),
+   parent-editable conffiles in `/etc/familymon/` (dpkg preserves local edits
+   on upgrade), and `policy_example.yaml` under `/usr/share/familymon/`. The
+   postinst also creates the `familymon` system account, retires the old
+   per-user units and moves an older release's per-user state into
+   `/var/lib/familymon`. The prerm disables everything on removal.
 2. `scripts/publish-deb.sh` → maintains a flat apt repo (Packages +
    checksummed Release, `Origin: familymon`) and rsyncs it to the target's
    `/srv/familymon-apt` (`--setup` provisions the dir + sources entry once).
@@ -232,8 +237,8 @@ Note on unattended timekpr upgrades (the PPA is in the target's allowed
 origins): an upstream update can restart the daemon or drift its config.
 `familymonctl enforce apply` is an idempotent reconciler, and the package
 ships it as a **system** timer — `familymon-enforce.timer` (hourly + 5 min
-after boot, ordered after `timekpr.service`; enable with
-`systemctl enable --now familymon-enforce.timer`). Any drift re-converges to
+after boot; the package enables it, but it only does anything once
+`/var/lib/familymon/policy.yaml` exists). Any drift re-converges to
 `policy.yaml` within the hour; the apply guard still refuses a change that
 would cut the user's live session, so a refused run simply retries later.
 
@@ -254,10 +259,10 @@ still *flagged*. School conferencing (Meet, Zoom, Teams) is never blocked.
 The always-on part of the file turns off DoH/ECH so the browser keeps using
 the system resolver (groundwork for a future DNS layer; no behaviour change
 today). Enable: add `web_block:` to `policy.yaml` (see
-`policy_example.yaml`) and `systemctl enable --now familymon-webblock.timer`.
+`policy_example.yaml`); `familymon-webblock.timer` is already enabled by the package.
 
-The reactive half lives in the kid's session: `schedule notify-tick` (the
-existing per-minute user timer) also looks at the last few minutes of
+The reactive half is `schedule notify-tick` (the per-minute root timer
+`familymon-notify.timer`, which delivers popups into the kid's session). It also looks at the last few minutes of
 classified captures and, when one conflicts with the lesson in progress —
 same rules as the Conflicts panel, so this includes streaming video and
 native games the policy can't block, and a chat tab that was already open —
@@ -287,6 +292,22 @@ default), always, or never.
 A Chrome launched by hand with `--disable-extensions` runs without the tab
 closer (verified), so the lesson-time process sweep closes such a Chrome
 like any other bypass.
+
+### Tamper resistance
+
+Everything runs as root (capture supervisor, classifier, heartbeat, notifier,
+enforcement) and all state lives in `/var/lib/familymon`, out of the monitored
+user's reach. The user cannot stop or mask the units. What they can still do
+is **detected, not prevented**: log out, restart KWin, kill each per-tick
+capture helper, or squat the window-sink bus name make capture ticks fail,
+which shows up as `capture_failed` / `capture_tamper` events and a red
+dashboard banner while the session is open; they can mute familymon's
+notifications in Plasma (notifications are advisory); a text console is not
+captured. Root access and physical access are out of scope. Details and the
+threat model: [docs/develop/tamper-resistance.md](docs/develop/tamper-resistance.md).
+After upgrading from a pre-root release, rotate the dashboard password and
+consider removing the kid from the `adm` group; see
+[install.md](docs/operate/install.md#11-upgrading-from-a-per-user-release).
 
 Known gaps, deliberate for now: only Chrome is governed (other browsers are
 closed during lessons, the target's unused Firefox snap was removed);

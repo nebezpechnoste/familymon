@@ -35,8 +35,8 @@ Files that use this order:
 | File | Location | Notes |
 |---|---|---|
 | `policy.yaml` | `state_dir()/policy.yaml` | Not read from `/etc/familymon` or `$FAMILYMON_CONFIG_DIR`. |
-| `schedule.yaml` | `state_dir()/schedule.yaml` | `enforce web-block` reads `~kid/.local/state/familymon/schedule.yaml` instead, or the path given with `--schedule FILE`. |
-| `dashboard.env` | `/etc/familymon/dashboard.env` | Read by systemd (`EnvironmentFile=-`), not by Python. A missing file is ignored. |
+| `schedule.yaml` | `state_dir()/schedule.yaml` (`/var/lib/familymon/schedule.yaml` in production) | One file, read by every consumer. `enforce web-block --schedule FILE` can evaluate a different one. |
+| `dashboard.env` | `/etc/familymon/dashboard.env` | Read by systemd (`EnvironmentFile=`) as root, not by Python. The dashboard unit is skipped (`ConditionPathExists`) when the file is missing. |
 
 ### 1.3 `state_dir()`
 
@@ -46,18 +46,20 @@ Files that use this order:
 
 Consequences:
 
-- Production root runs read `/var/lib/familymon/policy.yaml`. A non-root dev run reads `~/.local/state/familymon/policy.yaml`.
-- Safety: `schedule import` run as root writes `/var/lib/familymon/schedule.yaml`, which `enforce web-block` does not read (it reads the kid's state dir) unless you pass `--schedule`. Run schedule commands as `kid` so the file lands in `~kid/.local/state/familymon/`.
-- Other state files in the state dir: `captures.db`, `screenshots/`, `grants.json`, `playtime_charges.json`, `warned.json`.
+- Production root runs read `/var/lib/familymon/policy.yaml`. A non-root dev run reads `~/.local/state/familymon/policy.yaml` (a different, dev-only state).
+- Every schedule and enforcement command runs as root and works on `/var/lib/familymon`. The dashboard (user `familymon`) reaches the same directory because its unit sets `FAMILYMON_STATE_DIR=/var/lib/familymon`; it needs only group read access.
+- Other state files in the state dir: `captures.db`, `screenshots/`, `grants.json`, `playtime_charges.json`, `notified.json`, `warned.json`, `known_games.json` (game dirs seen installed; managed with `enforce games`). `captures.db`, `screenshots/` and `schedule.yaml` are group-readable by `familymon`; everything else is root-only.
+- The monitored account is read by `config.monitored_user()`: `$FAMILYMON_USER` if set, else the `user:` key of `policy.yaml`. The capture supervisor, heartbeat and notifier use it.
 
 ### 1.4 Environment variables
 
 | Variable | Default | Effect |
 |---|---|---|
 | `FAMILYMON_CONFIG_DIR` | unset | First lookup directory for bundled YAMLs (1.1). |
-| `FAMILYMON_STATE_DIR` | unset | Overrides `state_dir()`. |
+| `FAMILYMON_STATE_DIR` | unset | Overrides `state_dir()`. The dashboard unit sets it to `/var/lib/familymon` because the dashboard runs as the non-root `familymon` user; root jobs use `/var/lib/familymon` by default. |
+| `FAMILYMON_USER` | unset | The monitored account. Overrides the `user:` key of `policy.yaml` for `capture-supervise`, `heartbeat-once`, `migrate-state` and `schedule notify-tick`. Normally leave it unset. |
 | `XDG_STATE_HOME` | `~/.local/state` | Non-root state dir base. |
-| `FAMILYMON_INTERVAL` | `60` (parsed with `float()`) | Capture interval in seconds. Also used by `conflicts` and chargeback arithmetic. The shipped non-deb capture unit sets it to `60`; the deb user unit does not set it. |
+| `FAMILYMON_INTERVAL` | `60` (parsed with `float()`) | Capture interval in seconds. Also used by `conflicts` and chargeback arithmetic. The deb's capture unit does not set it, so the default 60 applies. |
 | `FAMILYMON_DASH_USER` | none, required | Dashboard basic-auth user. The dashboard raises `RuntimeError` if user or password is empty. |
 | `FAMILYMON_DASH_PASS` | none, required | Dashboard password. |
 | `FAMILYMON_DASH_BIND` | `127.0.0.1` | Dashboard bind address. `--bind` overrides. |
@@ -87,16 +89,16 @@ Not conffiles:
 
 | Change | How it takes effect |
 |---|---|
-| `policy.yaml`: `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks` | Not live. Needs `familymonctl enforce apply` (root), or the next run of `familymon-enforce.timer` (`OnBootSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`). The timer ships but is not enabled by the package. |
+| `policy.yaml`: `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks` | Not live. Needs `familymonctl enforce apply` (root), or the next run of `familymon-enforce.timer` (`OnBootSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`). The package enables the timer; it acts once `policy.yaml` exists. |
 | `policy.yaml`: `games.charge_browser_games`, `games.charge_browser_games_when` | Next chargeback tick (`familymon-chargeback.timer`: `OnActiveSec=3min`, `OnUnitActiveSec=5min`). No `enforce apply`. |
 | `policy.yaml`: `web_block.*` | Next `familymon-webblock.timer` tick (every minute). No `enforce apply`. |
 | `schedule.yaml` | Live. Every consumer re-reads it each run (notify-tick every minute, web-block every minute, `classify` every 5 minutes, dashboard per request). The capture loop does not read it. |
-| `schedule_extras.yaml` | Not live. Run `schedule refresh` (or `schedule import`) as `kid`. |
-| `messaging_apps.yaml` | Restart `familymon-capture.service` (a user unit; the list is loaded once when the capture backend is constructed, no reload code exists). |
-| `game_apps.yaml` | Capture: restart `familymon-capture.service` (loaded and Steam-scanned once at startup). `enforce apply` re-scans the Steam library on each run, but the curated lists never become PlayTime masks (use `games.extra_masks`). |
+| `schedule_extras.yaml` | Not live. Run `sudo familymonctl schedule refresh` (or `schedule import`). |
+| `messaging_apps.yaml` | Next tick: every capture probe is a new process and loads the list when it starts. |
+| `game_apps.yaml` | Capture: picked up at the supervisor's next game-library scan (at start and every 30 minutes); `sudo systemctl restart familymon-capture.service` applies it at once. `enforce apply` re-scans the Steam library on each run, but the curated lists never become PlayTime masks (use `games.extra_masks`). |
 | `domains_starter.yaml` | Next web-block tick, next notify-tick and next `classify` run. The capture loop and the dashboard do not read it (no `config_file` use in either). |
 | `title_brands.yaml` | Next process start of each consumer (per tick for the timers). |
-| `dashboard.env` | Restart `familymon-dashboard.service` (a user unit; the app reads the variables once in `create_app`). |
+| `dashboard.env` | `sudo systemctl restart familymon-dashboard.service` (the app reads the variables once in `create_app`). |
 
 Policy files are re-read by every command on every run. No process caches `policy.yaml`.
 
@@ -225,7 +227,7 @@ One-off extensions: use grants (`familymonctl enforce grant ...`), never raw `ti
 
 ## 4. `schedule.yaml`
 
-Location: `state_dir()/schedule.yaml`, for the monitored user `~kid/.local/state/familymon/schedule.yaml`. Normally written by `schedule import` / `schedule refresh`, but it can be written by hand. No importer is required. All times are the kid's local time.
+Location: `state_dir()/schedule.yaml`, which in production is `/var/lib/familymon/schedule.yaml`. Normally written by `schedule import` / `schedule refresh`, but it can be written by hand. No importer is required. All times are the kid's local time.
 
 Loading: an empty file loads as an empty schedule. A non-mapping top level raises a raw `AttributeError`.
 
@@ -281,7 +283,7 @@ Caveats:
 
 ## 5. `schedule_extras.yaml`
 
-Resolved via section 1.1 (normally `/etc/familymon/schedule_extras.yaml`, a conffile). Consumed only by `schedule import` and `schedule refresh`. Edits are not live: run `familymonctl schedule refresh` as `kid`. A missing file is treated as empty. A non-mapping top level raises `ValueError`. Unknown keys are ignored.
+Resolved via section 1.1 (normally `/etc/familymon/schedule_extras.yaml`, a conffile). Consumed only by `schedule import` and `schedule refresh`. Edits are not live: run `sudo familymonctl schedule refresh`. A missing file is treated as empty. A non-mapping top level raises `ValueError`. Unknown keys are ignored.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
@@ -308,7 +310,7 @@ Conffile `/etc/familymon/messaging_apps.yaml`. Window metadata is always recorde
 | `window_classes` | list of str | Lowercased. A window is skipped if its lowercased class, or any underscore-separated segment of it, matches. |
 | `title_patterns` | list of regex | Compiled case-insensitive, matched with `.search` on the window title. An invalid regex raises `re.error` at load. |
 
-Both keys are optional. An empty file raises `AttributeError` (no `or {}` guard), so keep at least `window_classes: []`. Apply: restart `familymon-capture.service`.
+Both keys are optional. An empty file raises `AttributeError` (no `or {}` guard), so keep at least `window_classes: []`. Apply: next capture tick, or `sudo systemctl restart familymon-capture.service`.
 
 Safety: weakening this list exposes private messages to screenshots. Do not remove entries without the parent's decision.
 
@@ -327,7 +329,7 @@ Conffile `/etc/familymon/game_apps.yaml`. A curated list that supplements the in
 | `window_classes` | list of str | Lowercased. Matched against the whole window class or any underscore segment. |
 | `binaries` | list of str | Lowercased. Matched against the basename of the window process's executable path or of any of its command-line arguments. |
 
-An empty file gives empty lists (an unreadable file also does; the resolver always finds at least the bundled copy). Parse errors are not caught. The bundled file already lists common launchers and emulators; an override replaces it entirely, so copy it first. This example uses placeholder names. Apply: restart `familymon-capture.service`. `enforce apply` re-scans on every run.
+An empty file gives empty lists (an unreadable file also does; the resolver always finds at least the bundled copy). Parse errors are not caught. The bundled file already lists common launchers and emulators; an override replaces it entirely, so copy it first. This example uses placeholder names. Apply: `sudo systemctl restart familymon-capture.service` (or wait for the 30-minute rescan). `enforce apply` re-scans on every run.
 
 ```yaml
 window_classes: [example-launcher]
@@ -393,7 +395,7 @@ The extension (Manifest V3, Chrome 120 or later, permissions `tabs`, `storage`, 
 
 ## 10. `dashboard.env`
 
-Create `/etc/familymon/dashboard.env` (root-owned; mode 0644 is acceptable for a view-only dashboard, per the unit comment). It is a systemd environment file, one `KEY=value` per line, read by `familymon-dashboard.service`. Not shipped, not a conffile.
+Create `/etc/familymon/dashboard.env`, owner root:root, mode 0600 (the package's postinst forces that mode if the file exists). It is a systemd environment file, one `KEY=value` per line, read by systemd as root before `familymon-dashboard.service` drops to the `familymon` user, so neither the dashboard process nor the kid can read the password. Not shipped, not a conffile. Without it the unit is skipped.
 
 ```
 FAMILYMON_DASH_USER=parent
@@ -402,7 +404,7 @@ FAMILYMON_DASH_BIND=192.0.2.10
 FAMILYMON_DASH_PORT=8765
 ```
 
-Safety: the default bind is `127.0.0.1`. Binding to `0.0.0.0` or a LAN address exposes captured activity to that network behind basic auth only. Parent decides. Apply: restart `familymon-dashboard.service`.
+Safety: the default bind is `127.0.0.1`. Binding to `0.0.0.0` or a LAN address exposes captured activity to that network behind basic auth only. Parent decides. Apply: `sudo systemctl restart familymon-dashboard.service`.
 
 ## 11. Common mistakes
 
@@ -411,6 +413,5 @@ Safety: the default bind is `127.0.0.1`. Binding to `0.0.0.0` or a LAN address e
 - Expecting `schedule_extras.yaml` edits to be live: run `schedule refresh`.
 - Unquoted `HH:MM` times in schedules.
 - Misspelled top-level keys in `policy.yaml`: silently ignored.
-- Running `schedule import` as root: writes the wrong state dir (1.3).
 - Empty `messaging_apps.yaml`: raises at load.
-- The enforce, chargeback and web-block timers ship but the package does not enable them. Enable them deliberately (see [files and units](files-and-units.md)).
+- Assuming the enforce, chargeback and web-block timers are off: the package enables them, so they act as soon as `policy.yaml` exists. Preview with `enforce plan` and the `--dry-run` forms before saving (see [files and units](files-and-units.md)).
