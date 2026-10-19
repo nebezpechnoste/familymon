@@ -1,9 +1,10 @@
 """Runtime configuration: where state lives, default intervals.
 
-Dev runs (non-root) put state under XDG_STATE_HOME (~/.local/state/familymon by
-default). Production runs as the `familymon` system user with state under
-/var/lib/familymon — when EUID is 0 or the FAMILYMON_STATE_DIR env var is set,
-we honor that path.
+Production runs as root with all state under /var/lib/familymon, out of the
+monitored user's reach (docs/develop/tamper-resistance.md). The read-only
+dashboard runs as the `familymon` system user and finds the same directory
+through FAMILYMON_STATE_DIR. Dev runs (non-root) put state under
+XDG_STATE_HOME (~/.local/state/familymon by default).
 """
 
 from __future__ import annotations
@@ -39,10 +40,28 @@ def policy_path() -> Path:
     return state_dir() / "policy.yaml"
 
 
+def monitored_user() -> str:
+    """The account familymon watches: FAMILYMON_USER, else `user` in
+    policy.yaml. Raises LookupError when neither names one."""
+    override = os.environ.get("FAMILYMON_USER")
+    if override:
+        return override
+    import yaml
+
+    try:
+        raw = yaml.safe_load(policy_path().read_text()) or {}
+    except (OSError, yaml.YAMLError) as e:
+        raise LookupError(f"no monitored user: cannot read {policy_path()} ({e})") from None
+    user = raw.get("user") if isinstance(raw, dict) else None
+    if not isinstance(user, str) or not user:
+        raise LookupError(f"no monitored user: {policy_path()} has no 'user'")
+    return user
+
+
 def user_state_dir(user: str) -> Path:
-    """Another (monitored) user's default state dir — where *their* capture
-    loop writes. Used by root-side reconcilers that must read the kid's
-    captures. Honors the same XDG default as state_dir() for a non-root user."""
+    """Where releases before the root migration kept a monitored user's state
+    (their own ~/.local/state/familymon). Only `familymonctl migrate-state`
+    reads it now."""
     import pwd
 
     home = Path(pwd.getpwnam(user).pw_dir)

@@ -44,7 +44,7 @@ async def test_status_fails_open_when_connect_raises(monkeypatch):
 
     monkeypatch.setattr(s, "connect", boom)
     status = await s.status()
-    assert status == SessionStatus(found=False, active=True, locked=False)
+    assert status == SessionStatus(found=False, active=True, locked=False, queried=False)
 
 
 @pytest.mark.asyncio
@@ -77,7 +77,11 @@ async def test_status_fails_open_when_no_graphical_session(monkeypatch):
 
     monkeypatch.setattr(s, "_discover_graphical_session", no_session)
     status = await s.status()
-    assert status == SessionStatus(found=False, active=True, locked=False)
+    # Asked logind and the user has no graphical session: distinguishable
+    # from a failed query (the root supervisor skips the tick), but the
+    # in-session loop still captures (no suppression).
+    assert not status.found and status.queried
+    assert status.suppress_reason() is None
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,5 @@
 # One-shot heuristic classification pass, driven by familymon-classify.timer.
+# Root: the capture DB lives in /var/lib/familymon.
 [Unit]
 Description=familymon classify pass
 

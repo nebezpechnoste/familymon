@@ -29,6 +29,12 @@
   .heartbeat.dead  { background: #ffe0e0; color: #7a1b1b; border: 1px solid #e0a0a0;
                      font-weight: 600; }
   .heartbeat.never { background: #efefef; color: #555; border: 1px solid #d0d0d0; }
+  .heartbeat.idle  { background: #efefef; color: #555; border: 1px solid #d0d0d0; }
+  .heartbeat.watcher_down { background: #ffe0e0; color: #7a1b1b; border: 1px solid #e0a0a0;
+                            font-weight: 600; }
+  .tamper { padding: 0.4rem 0.7rem; border-radius: 4px; margin-bottom: 0.8rem;
+            font-size: 0.85rem; background: #ffe0e0; color: #7a1b1b;
+            border: 1px solid #e0a0a0; }
   .break { padding: 0.4rem 0.7rem; border-radius: 4px; margin-bottom: 0.8rem;
            font-size: 0.85rem; background: #e8f0fe; color: #1a3d7a;
            border: 1px solid #b7c9ea; }
@@ -88,7 +94,9 @@
   <span>
     {% if heartbeat.status == "ok" %}● Capture: OK
     {% elif heartbeat.status == "stale" %}⚠ Capture stale
-    {% elif heartbeat.status == "dead" %}✕ Capture DOWN
+    {% elif heartbeat.status == "dead" %}✕ Capture DOWN{% if heartbeat.session and heartbeat.session != "unknown" %} while the session is {{ heartbeat.session }}{% endif %}
+    {% elif heartbeat.status == "idle" %}○ Not logged in
+    {% elif heartbeat.status == "watcher_down" %}✕ Heartbeat watcher not running
     {% else %}— No captures yet
     {% endif %}
   </span>
@@ -97,6 +105,15 @@
       last capture {{ heartbeat.age_seconds|fmt_duration }} ago
     {% endif %}
   </span>
+</div>
+{% endif %}
+
+{% if problems and (problems.capture_failed or problems.capture_tamper) %}
+<div class="tamper">
+  This day:
+  {% if problems.capture_failed %}{{ problems.capture_failed }} capture(s) failed while the session was open{% endif %}{% if problems.capture_failed and problems.capture_tamper %}; {% endif %}
+  {% if problems.capture_tamper %}{{ problems.capture_tamper }} forged window-list attempt(s) rejected{% endif %}.
+  Details: <code>sudo familymonctl events --day {{ target_date }}</code>
 </div>
 {% endif %}
 

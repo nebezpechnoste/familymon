@@ -4,6 +4,7 @@
 # session right now — the unit shows "failed" and the next run retries.
 [Unit]
 Description=familymon enforcement reconcile (timekpr-next)
+ConditionPathExists=/var/lib/familymon/policy.yaml
 After=timekpr.service
 
 [Service]

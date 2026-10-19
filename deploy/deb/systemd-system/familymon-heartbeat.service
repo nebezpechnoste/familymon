@@ -1,0 +1,9 @@
+# Capture-freshness check against the monitored user's logind session.
+# Non-zero exit (stale/dead while they are logged in) marks the unit failed;
+# "idle" (nobody logged in) exits 0. Root, so it can't be silenced.
+[Unit]
+Description=familymon heartbeat
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/familymonctl heartbeat-once

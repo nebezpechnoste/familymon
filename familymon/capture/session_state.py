@@ -44,6 +44,9 @@ class SessionStatus:
     found: bool
     active: bool
     locked: bool
+    # False when logind couldn't be asked at all (the fail-open sentinel), as
+    # opposed to "asked, and the user has no graphical session".
+    queried: bool = True
 
     def suppress_reason(self) -> str | None:
         """Why the screenshot should be skipped this tick, or None to capture."""
@@ -56,8 +59,21 @@ class SessionStatus:
         return None
 
 
+def session_label(status: SessionStatus) -> str:
+    """One word for events and the heartbeat: active / locked / inactive,
+    "none" (no graphical session) or "unknown" (logind not reachable)."""
+    if not status.queried:
+        return "unknown"
+    if not status.found:
+        return "none"
+    if not status.active:
+        return "inactive"
+    return "locked" if status.locked else "active"
+
+
 # Sentinel returned on any failure: capture anyway.
-_FAIL_OPEN = SessionStatus(found=False, active=True, locked=False)
+_FAIL_OPEN = SessionStatus(found=False, active=True, locked=False, queried=False)
+_NO_SESSION = SessionStatus(found=False, active=False, locked=False)
 
 
 class SessionState:
@@ -109,14 +125,14 @@ class SessionState:
             if self._session_path is None:
                 self._session_path = await self._discover_graphical_session()
             if self._session_path is None:
-                return _FAIL_OPEN
+                return _NO_SESSION
             try:
                 return await self._read(self._session_path)
             except Exception:
                 # Cached path likely went stale (session ended); rediscover once.
                 self._session_path = await self._discover_graphical_session()
                 if self._session_path is None:
-                    return _FAIL_OPEN
+                    return _NO_SESSION
                 return await self._read(self._session_path)
         except Exception as e:  # noqa: BLE001 — fail-open is the whole point
             logger.warning("logind session query failed, capturing anyway: %s", e)

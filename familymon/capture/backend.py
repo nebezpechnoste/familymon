@@ -34,7 +34,14 @@ class WindowSnapshot(BaseModel):
 class CaptureResult(BaseModel):
     """One tick of the capture loop, before any persistence or dedup."""
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    # Bytes travel as base64 in JSON: the root capture supervisor receives
+    # this model from the in-session helper over a pipe (capture/supervisor.py).
+    model_config = ConfigDict(
+        frozen=True,
+        arbitrary_types_allowed=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
+    )
 
     captured_at: datetime
     active_window: WindowSnapshot | None
@@ -46,6 +53,12 @@ class CaptureResult(BaseModel):
     messaging_present: bool = False
     # True when screenshot_bytes is a redacted image (messaging regions blacked).
     screenshot_redacted: bool = False
+    # Window-list pushes the sink refused this tick (wrong sender or nonce):
+    # something in the session tried to feed familymon a forged window list.
+    sink_rejected: int = 0
+    # False when KWin's window list never arrived (timeout, script failure):
+    # the tick saw nothing, and no screenshot was taken.
+    window_list_ok: bool = True
 
 
 @runtime_checkable

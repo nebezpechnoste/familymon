@@ -18,6 +18,7 @@ points at the game .exe under common/<dir>/).
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -126,6 +127,40 @@ def _process_path_tokens(pid: int) -> list[str]:
     return tokens
 
 
+def load_known_games(path: Path) -> set[str]:
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return set()
+    return {str(d) for d in raw if isinstance(d, str)} if isinstance(raw, list) else set()
+
+
+def save_known_games(path: Path, dirs: set[str]) -> None:
+    from familymon.storage.perms import secure
+
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(sorted(dirs), indent=1))
+    secure(tmp)
+    tmp.replace(path)
+
+
+def remember_games(path: Path, scanned: set[str]) -> set[str]:
+    """Union of every game dir ever seen installed and the current scan.
+
+    The Steam library lives in the monitored user's home, so they could hide
+    a game from the scan (delete its appmanifest, move the library) and with
+    it the game's PlayTime mask. Remembered dirs keep the mask until the
+    parent removes it (`familymonctl enforce games --forget`)."""
+    known = load_known_games(path)
+    merged = known | scanned
+    if merged != known:
+        save_known_games(path, merged)
+        for d in sorted(merged - known):
+            logger.info("game library: remembering %s", d)
+    return merged
+
+
 @dataclass(frozen=True)
 class GameLibrary:
     game_dirs: frozenset[str]
@@ -134,10 +169,14 @@ class GameLibrary:
 
     @classmethod
     def from_system(
-        cls, curated_path: Path | None = None, home: Path | None = None
+        cls,
+        curated_path: Path | None = None,
+        home: Path | None = None,
+        known_path: Path | None = None,
     ) -> "GameLibrary":
         """Scan the Steam library under `home` (default: current user's) plus
-        the curated list. Pass the monitored user's home when running as root."""
+        the curated list. Pass the monitored user's home when running as root,
+        and `known_path` to keep every game ever seen (remember_games)."""
         from familymon.config import config_file
 
         curated_path = curated_path or config_file("game_apps.yaml")
@@ -152,6 +191,8 @@ class GameLibrary:
             (b or "").strip().lower() for b in raw.get("binaries") or []
         )
         dirs = _scan_steam_game_dirs(home)
+        if known_path is not None:
+            dirs = remember_games(known_path, dirs)
         logger.info(
             "game library: %d installed Steam game dir(s), %d curated class(es)",
             len(dirs),

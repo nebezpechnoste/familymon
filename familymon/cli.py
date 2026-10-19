@@ -37,8 +37,65 @@ def capture_once() -> None:
 
 @main.command("capture-run")
 def capture_run() -> None:
-    """Run the capture loop until SIGINT."""
+    """Run the capture loop inside your own session until SIGINT (dev runs).
+
+    Production uses `capture-supervise` (root) instead.
+    """
     asyncio.run(_capture_run())
+
+
+@main.command("capture-supervise")
+def capture_supervise() -> None:
+    """Root capture loop for the monitored user (familymon-capture.service).
+
+    Follows the user's graphical session through logind and runs one
+    short-lived `capture-probe` as the user per tick; all state stays in the
+    root state dir. See familymon/capture/supervisor.py.
+    """
+    if os.geteuid() != 0:
+        raise click.ClickException(
+            "capture-supervise runs as root (it launches the probe as the user)"
+        )
+    asyncio.run(_capture_supervise())
+
+
+@main.command("capture-probe", hidden=True)
+def capture_probe() -> None:
+    """One in-session capture for the root supervisor: reads the request on
+    stdin, prints the (already redacted) CaptureResult JSON on stdout."""
+    import json
+    import sys
+
+    _make_undumpable()
+    request = json.loads(sys.stdin.read() or "{}")
+    result = asyncio.run(_probe_once(request))
+    sys.stdout.buffer.write(result.model_dump_json().encode())
+    sys.stdout.flush()
+
+
+def _make_undumpable() -> None:
+    """PR_SET_DUMPABLE=0: other processes of the same user can no longer open
+    /proc/<pid>/fd (our stdout pipe) or attach to us."""
+    import ctypes
+
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(4, 0, 0, 0, 0)
+    except (OSError, AttributeError):
+        pass
+
+
+async def _probe_once(request: dict):
+    from pathlib import Path
+
+    from familymon.capture.kwin_wayland import KWinWaylandBackend
+
+    script = request.get("script")
+    nonce = request.get("nonce")
+    suppress = request.get("suppress")
+    async with KWinWaylandBackend(
+        script_path=Path(script) if script else None, nonce=nonce
+    ) as backend:
+        return await backend.snapshot(suppress_screenshot_reason=suppress)
 
 
 @main.command("dashboard")
@@ -67,20 +124,43 @@ def heartbeat_once_cmd() -> None:
     """Run one capture-freshness check, log a heartbeat event, print status.
 
     Drive this from a systemd timer (1/min) so capture liveness is observed
-    independently of the capture loop itself. Exit codes: 0=ok, 1=stale,
-    2=dead, 3=never — non-zero marks the systemd unit failed, a secondary
-    signal beyond the Event row.
+    independently of the capture loop itself. Exit codes: 0=ok or idle (the
+    monitored user isn't logged in), 1=stale, 2=dead, 3=never — non-zero
+    marks the systemd unit failed, a secondary signal beyond the Event row.
     """
     from familymon.config import db_path
     from familymon.heartbeat import EXIT_CODES, check_capture_freshness, record_heartbeat
     from familymon.storage.session import make_engine, make_session_factory
 
     sessions = make_session_factory(make_engine(db_path()))
-    status = check_capture_freshness(sessions)
+    session = asyncio.run(_monitored_session_label())
+    status = check_capture_freshness(sessions, session=session)
     record_heartbeat(sessions, status)
     age = f"{status.age_seconds:.0f}s" if status.age_seconds is not None else "n/a"
-    click.echo(f"heartbeat: {status.status} (last capture {age} ago)")
+    click.echo(f"heartbeat: {status.status} (last capture {age} ago; session {session})")
     raise SystemExit(EXIT_CODES[status.status])
+
+
+async def _monitored_session_label() -> str:
+    """The monitored user's graphical session as logind reports it (as root),
+    or your own (dev): active / locked / inactive / none / unknown."""
+    import pwd
+
+    from familymon.capture.session_state import SessionState, session_label
+
+    uid = os.getuid()
+    if os.geteuid() == 0:
+        from familymon.config import monitored_user
+
+        try:
+            uid = pwd.getpwnam(monitored_user()).pw_uid
+        except (LookupError, KeyError):
+            return "unknown"
+    state = SessionState(uid=uid)
+    try:
+        return session_label(await state.status())
+    finally:
+        await state.close()
 
 
 @main.command("health")
@@ -165,6 +245,72 @@ def health_cmd() -> None:
     click.echo("db integrity:     ok")
     if r.last_db_recovery:
         click.echo(f"  ! DB was auto-recovered: {r.last_db_recovery}")
+
+
+@main.command("migrate-state")
+@click.option("--user", "user", default=None, help="Monitored user (default: from policy.yaml).")
+def migrate_state_cmd(user: str | None) -> None:
+    """Move a monitored user's old state (captures, screenshots, schedule)
+    from their home into the root state dir. Idempotent; the package's
+    postinst runs it. Stop the user's old capture service first."""
+    import pwd
+    from pathlib import Path
+
+    from familymon.config import monitored_user, state_dir, user_state_dir
+    from familymon.storage.migrate import MigrationError, migrate_user_state
+
+    if os.geteuid() != 0:
+        raise click.ClickException("migrate-state runs as root")
+    try:
+        user = user or monitored_user()
+        home = Path(pwd.getpwnam(user).pw_dir)
+    except (LookupError, KeyError) as e:
+        raise click.ClickException(f"no monitored user: {e}") from None
+    try:
+        report = migrate_user_state(user, user_state_dir(user), state_dir(), home=home)
+    except (MigrationError, OSError) as e:
+        raise click.ClickException(f"migration failed (safe to re-run): {e}") from None
+    if report is None:
+        click.echo(f"{user}: nothing to migrate")
+        return
+    click.echo(
+        f"{user}: migrated {report.captures} capture(s), {report.screenshots_moved} "
+        f"screenshot(s), carried {report.events_carried} root event(s); copied "
+        f"{', '.join(report.copied) or 'nothing else'}"
+        + (f"; kept root's {', '.join(report.kept_root)}" if report.kept_root else "")
+        + (f"; appended {report.root_captures_carried} capture(s) root took meanwhile"
+           if report.root_captures_carried else "")
+        + f". Old directory kept at {report.backup_dir}"
+    )
+
+
+@main.command("events")
+@click.option("--day", default=None, help="Day YYYY-MM-DD (default: today).")
+@click.option("--kind", "kinds", multiple=True,
+              help="Only these kinds (repeatable), e.g. capture_failed, capture_tamper.")
+def events_cmd(day: str | None, kinds: tuple[str, ...]) -> None:
+    """List the day's operational events (heartbeats excluded unless asked):
+    capture failures, tamper evidence, enforcement and grant audit rows."""
+    import json
+    from datetime import date, datetime, time, timedelta
+
+    from sqlalchemy import select
+
+    from familymon.config import db_path
+    from familymon.storage.models import Event
+    from familymon.storage.session import make_readonly_engine, make_session_factory
+
+    if not db_path().exists():
+        raise click.ClickException(f"no database at {db_path()}")
+    target = date.fromisoformat(day) if day else date.today()
+    start = datetime.combine(target, time.min)
+    q = select(Event).where(Event.at >= start, Event.at < start + timedelta(days=1))
+    q = q.where(Event.kind.in_(kinds)) if kinds else q.where(Event.kind != "heartbeat")
+    with make_session_factory(make_readonly_engine(db_path()))() as s:
+        rows = s.scalars(q.order_by(Event.at)).all()
+    for ev in rows:
+        click.echo(f"{ev.at:%H:%M:%S}  {ev.kind:20} {json.dumps(ev.data, sort_keys=True)}")
+    click.echo(f"{len(rows)} event(s) on {target}")
 
 
 @main.group("schedule")
@@ -294,18 +440,18 @@ def schedule_notify_tick(test_: bool, no_warn: bool, warn_cooldown: int | None) 
     """Pop a desktop notification for notify-flagged blocks starting now, and
     a warning when a distraction is seen during the lesson in progress.
 
-    Runs every minute from familymon-notify.timer inside the kid's session
-    (needs the session bus for notify-send). Per-day watermark files in the
-    state dir prevent repeats.
+    Runs every minute from familymon-notify.timer (root); notifications go
+    into the monitored user's session. Per-day watermark files in the state
+    dir prevent repeats.
     """
     from datetime import datetime
 
     from familymon.config import schedule_path
-    from familymon.notify import send
 
+    send = _session_notifier()
     if test_:
-        send("familymon", "Schedule notifications are working.")
-        click.echo("test notification sent")
+        sent = send("familymon", "Schedule notifications are working.")
+        click.echo("test notification sent" if sent else "no session to notify")
         return
 
     from familymon.policy.schedule import Schedule
@@ -315,17 +461,36 @@ def schedule_notify_tick(test_: bool, no_warn: bool, warn_cooldown: int | None) 
         return
     now = datetime.now()
     schedule = Schedule.load(path)
-    _notify_block_starts(schedule, now)
+    _notify_block_starts(schedule, now, send)
     if not no_warn:
-        _warn_live_conflicts(schedule, now, warn_cooldown)
+        _warn_live_conflicts(schedule, now, warn_cooldown, send)
 
 
-def _notify_block_starts(schedule, now) -> int:
+def _session_notifier():
+    """notify(summary, body, icon=...) -> bool. As root: into the monitored
+    user's session (notify.send_as). Otherwise (dev): into your own."""
+    from familymon import notify
+
+    if os.geteuid() != 0:
+        def own(summary, body, **kw) -> bool:
+            notify.send(summary, body, **kw)
+            return True
+
+        return own
+    from familymon.config import monitored_user
+
+    try:
+        user = monitored_user()
+    except LookupError as e:
+        raise click.ClickException(str(e)) from None
+    return lambda summary, body, **kw: notify.send_as(user, summary, body, **kw)
+
+
+def _notify_block_starts(schedule, now, send) -> int:
     """Notification at the start of notify-flagged blocks; one per block per day."""
     import json
 
     from familymon.config import state_dir
-    from familymon.notify import send
 
     due = schedule.starting_at(now)
     if not due:
@@ -342,9 +507,11 @@ def _notify_block_starts(schedule, now) -> int:
         key = f"{b.start:%H:%M}|{b.subject}"
         if key in done:
             continue
-        send(b.subject, f"{b.start:%H:%M}\u2013{b.end:%H:%M} \u2014 time for {b.subject}")
-        done.add(key)
-        fired += 1
+        # Marked only when delivered: with nobody logged in, the next tick
+        # (still inside the block's start minute) retries.
+        if send(b.subject, f"{b.start:%H:%M}\u2013{b.end:%H:%M} \u2014 time for {b.subject}"):
+            done.add(key)
+            fired += 1
     if fired:
         mark.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         mark.write_text(json.dumps({today: sorted(done)}))
@@ -352,13 +519,12 @@ def _notify_block_starts(schedule, now) -> int:
     return fired
 
 
-def _warn_live_conflicts(schedule, now, cooldown: int | None) -> int:
+def _warn_live_conflicts(schedule, now, cooldown: int | None, send) -> int:
     """Live lesson-conflict warning \u2014 the "react" half of lesson-time
     enforcement (the Chrome policy block is the other; see policy/livewarn.py)."""
     from datetime import timedelta
 
     from familymon.config import db_path, state_dir
-    from familymon.notify import send
     from familymon.policy.livewarn import (
         DEFAULT_COOLDOWN_MINUTES,
         LOOKBACK_MINUTES,
@@ -396,14 +562,17 @@ def _warn_live_conflicts(schedule, now, cooldown: int | None) -> int:
         store.last_warned(now.date()),
         DEFAULT_COOLDOWN_MINUTES if cooldown is None else cooldown,
     )
+    warned = 0
     for w in due:
         summary, body = w.message()
-        send(summary, body, icon="dialog-warning")
+        if not send(summary, body, icon="dialog-warning"):
+            continue
         store.mark(w.key, now)
+        warned += 1
         click.echo(f"warned: {w.category} during {w.block.subject}")
-    if due:
+    if warned:
         store.save()
-    return len(due)
+    return warned
 
 
 @main.command("conflicts")
@@ -480,17 +649,8 @@ def _enforce_desired():
     policy = load_policy(path)
     # Scan the *monitored* user's Steam library, not the invoker's — this runs
     # as root, whose home has no Steam, which would yield zero game masks.
-    home = None
     user = policy.get("user")
-    if isinstance(user, str):
-        import pwd
-        from pathlib import Path
-
-        try:
-            home = Path(pwd.getpwnam(user).pw_dir)
-        except KeyError:
-            raise click.ClickException(f"policy user {user!r} does not exist") from None
-    gamelib = GameLibrary.from_system(home=home)
+    gamelib = _game_library(user) if isinstance(user, str) else GameLibrary.from_system()
     settings = build_settings(policy, gamelib.game_dirs)
     # One-off grants (familymonctl enforce grant) widen today's window; folding
     # them in here is what stops the hourly reconciler from reverting them.
@@ -606,19 +766,18 @@ def enforce_chargeback(dry_run: bool) -> None:
 
     One reconcile tick (run from familymon-chargeback.timer every 5 min).
     Needs `games.charge_browser_games: true` in policy.yaml. Reads the
-    monitored user's capture DB read-only; the watermark lives in the root
-    state dir.
+    capture DB read-only; the watermark lives next to it in the state dir.
     """
     from familymon.config import (
         capture_interval_seconds,
         db_path,
         policy_path,
         state_dir,
-        user_state_dir,
     )
     from familymon.policy.chargeback import (
         make_readonly_engine,
         record_charge_event,
+        rewound_watermark,
         run_chargeback,
         sessions_for,
     )
@@ -642,11 +801,10 @@ def enforce_chargeback(dry_run: bool) -> None:
         )
     focused_pred = _focused_title_is_game() if when == "focused" else None
 
-    kid_db = user_state_dir(user) / "captures.db"
-    if not kid_db.exists():
-        click.echo(f"{user}: no capture DB at {kid_db} yet — nothing to charge")
+    if not db_path().exists():
+        click.echo(f"{user}: no capture DB at {db_path()} yet — nothing to charge")
         return
-    user_sessions = sessions_for(make_readonly_engine(kid_db))
+    user_sessions = sessions_for(make_readonly_engine(db_path()))
     state_path = state_dir() / "playtime_charges.json"
 
     if dry_run:
@@ -655,6 +813,7 @@ def enforce_chargeback(dry_run: bool) -> None:
         from familymon.policy.chargeback import ChargeState, find_chargeable_captures
 
         st = ChargeState.load(state_path, user, date.today())
+        rewound_watermark(st, user_sessions)
         rows = find_chargeable_captures(
             user_sessions, since_id=st.last_capture_id, today=date.today(),
             focused_title_is_game=focused_pred,
@@ -804,6 +963,35 @@ def enforce_revoke(user: str) -> None:
     click.echo(f"revoked {n} grant(s); {len(changes)} timekpr change(s) applied")
 
 
+@enforce_grp.command("games")
+@click.option("--forget", "forget", multiple=True, metavar="DIR",
+              help="Stop treating this remembered game dir as a game (repeatable).")
+def enforce_games(forget: tuple[str, ...]) -> None:
+    """List the game dirs familymon budgets (remembered + installed now).
+
+    A game stays on the list after it disappears from the Steam library, so
+    hiding a game's files doesn't take it off the PlayTime budget. Only the
+    parent removes one, with --forget. The next `enforce apply` (hourly)
+    updates timekpr's masks.
+    """
+    from familymon.capture.games import load_known_games, save_known_games
+    from familymon.config import state_dir
+
+    path = state_dir() / "known_games.json"
+    if forget:
+        known = load_known_games(path)
+        missing = [d for d in forget if d not in known]
+        if missing:
+            raise click.ClickException(f"not remembered: {', '.join(missing)}")
+        save_known_games(path, known - set(forget))
+        click.echo(
+            f"forgot {len(forget)} game dir(s); one still installed is re-added on the next scan"
+        )
+        return
+    for d in sorted(load_known_games(path)):
+        click.echo(f"  {d}{'' if os.path.isdir(d) else '  (not installed now)'}")
+
+
 @enforce_grp.command("web-block")
 @click.option("--dry-run", is_flag=True, help="Show the desired Chrome policy; write nothing.")
 @click.option(
@@ -811,7 +999,7 @@ def enforce_revoke(user: str) -> None:
     "schedule_file",
     default=None,
     type=click.Path(exists=True, dir_okay=False),
-    help="Schedule YAML to evaluate (default: the policy user's imported schedule).",
+    help="Schedule YAML to evaluate (default: the imported schedule).",
 )
 def enforce_web_block(dry_run: bool, schedule_file: str | None) -> None:
     """Reconcile Chrome's managed policy to lesson-time web blocking.
@@ -826,7 +1014,7 @@ def enforce_web_block(dry_run: bool, schedule_file: str | None) -> None:
     from datetime import datetime
     from pathlib import Path
 
-    from familymon.config import config_file, db_path, policy_path, user_state_dir
+    from familymon.config import config_file, db_path, policy_path, schedule_path
     from familymon.policy.crx import load_extension_ref
     from familymon.policy.enforcement import PolicyError, load_policy
     from familymon.policy.schedule import Schedule
@@ -855,7 +1043,7 @@ def enforce_web_block(dry_run: bool, schedule_file: str | None) -> None:
         raise click.ClickException(str(e)) from None
 
     schedule = None
-    sched_path = Path(schedule_file) if schedule_file else user_state_dir(user) / "schedule.yaml"
+    sched_path = Path(schedule_file) if schedule_file else schedule_path()
     if sched_path.exists():
         schedule = Schedule.load(sched_path)
     elif cfg.enabled:
@@ -1092,6 +1280,49 @@ async def _capture_run() -> None:
             )
     finally:
         await session_state.close()
+
+
+async def _capture_supervise() -> None:
+    from familymon.capture.persist import CapturePersistence
+    from familymon.capture.supervisor import run_supervisor
+    from familymon.config import (
+        capture_interval_seconds,
+        db_path,
+        monitored_user,
+        screenshots_dir,
+    )
+    from familymon.storage.session import make_engine, make_session_factory
+
+    try:
+        user = monitored_user()
+    except LookupError as e:
+        raise click.ClickException(str(e)) from None
+    sessions = make_session_factory(make_engine(db_path()))
+    persistence = CapturePersistence(sessions, screenshots_dir())
+    click.echo(f"familymon capture supervisor: watching {user}")
+    await run_supervisor(
+        user,
+        persistence=persistence,
+        sessions=sessions,
+        interval=capture_interval_seconds(),
+        load_gamelib=lambda: _game_library(user),
+    )
+
+
+def _game_library(user: str):
+    """The monitored user's games: their Steam library as scanned now, plus
+    every game seen installed before (games.py, KnownGames)."""
+    import pwd
+    from pathlib import Path
+
+    from familymon.capture.games import GameLibrary
+    from familymon.config import state_dir
+
+    try:
+        home = Path(pwd.getpwnam(user).pw_dir)
+    except KeyError:
+        raise click.ClickException(f"user {user!r} does not exist") from None
+    return GameLibrary.from_system(home=home, known_path=state_dir() / "known_games.json")
 
 
 # ---- extension ----------------------------------------------------------------

@@ -217,6 +217,10 @@ class Schedule:
         if self.breaks:
             payload["breaks"] = [br.to_dict() for br in self.breaks]
         path.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
+        # Root-owned, readable by the dashboard's group (storage/perms.py).
+        from familymon.storage.perms import secure
+
+        secure(path, shared=True)
 
     @classmethod
     def load(cls, path: Path) -> "Schedule":

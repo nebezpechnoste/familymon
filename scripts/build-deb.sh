@@ -9,7 +9,8 @@
 # Contents:
 #   /opt/familymon/venv                 bundled env + familymon (non-editable)
 #   /usr/bin/familymonctl               thin wrapper into the venv
-#   /usr/lib/systemd/user/familymon-*   capture/classify/heartbeat/dashboard
+#   /usr/lib/systemd/system/familymon-* every unit; all run as root except the
+#                                       read-only dashboard (user familymon)
 #   /etc/familymon/{messaging_apps,game_apps}.yaml   parent-editable conffiles
 #                                       (dpkg preserves local edits on upgrade)
 #   /usr/share/familymon/policy_example.yaml
@@ -82,10 +83,8 @@ EXT_KEY="$REPO/private/chrome-extension-key.pem"
 
 # ---- filesystem payload -----------------------------------------------------
 install -D -m 0755 deploy/deb/bin/familymonctl "$STAGING/usr/bin/familymonctl"
-install -d "$STAGING/usr/lib/systemd/user"
-install -m 0644 deploy/deb/systemd-user/*.service deploy/deb/systemd-user/*.timer \
-    "$STAGING/usr/lib/systemd/user/"
-# System-scope units (root): the enforcement reconciler.
+# Every unit is system-scope: the monitored user can neither stop nor mask
+# them (docs/develop/tamper-resistance.md).
 install -d "$STAGING/usr/lib/systemd/system"
 install -m 0644 deploy/deb/systemd-system/*.service deploy/deb/systemd-system/*.timer \
     "$STAGING/usr/lib/systemd/system/"
@@ -112,7 +111,7 @@ Section: admin
 Priority: optional
 Architecture: amd64
 Installed-Size: ${INSTALLED_SIZE}
-Depends: python3 (>= ${PY_MINOR}), python3 (<< ${PY_NEXT}), kde-spectacle, sqlite3, libnotify-bin
+Depends: python3 (>= ${PY_MINOR}), python3 (<< ${PY_NEXT}), kde-spectacle, sqlite3, libnotify-bin, adduser, util-linux, procps, findutils
 Recommends: timekpr-next, tesseract-ocr
 Maintainer: $(git config user.name) <$(git config user.email)>
 Description: Local-first parental-control monitoring
@@ -121,27 +120,70 @@ Description: Local-first parental-control monitoring
  for time/app enforcement. Bundles its Python environment (frozen to the
  tested uv.lock) under /opt/familymon.
 EOF
-# Long-running user units (capture loop, dashboard) keep the OLD code in
-# memory after an upgrade — the dashboard once ran stale conflict rules for a
-# week. Restart them for every logged-in user that has them active; the
-# per-tick timer services pick up new code by themselves. Best effort.
+# postinst: the dashboard's system user, the move from per-user units and
+# per-user state (releases before the root supervisor) to root, then enable
+# and (re)start everything. Long-running units are restarted so they never
+# keep OLD code in memory (the dashboard once ran stale rules for a week).
 cat > "$STAGING/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
-if [ "$1" = "configure" ] && command -v loginctl >/dev/null 2>&1; then
+UNITS_LONG="familymon-capture.service familymon-dashboard.service"
+TIMERS="familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer familymon-enforce.timer familymon-chargeback.timer familymon-webblock.timer"
+OLD_USER_UNITS="familymon-capture.service familymon-dashboard.service familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer familymon-classify.service familymon-heartbeat.service familymon-notify.service"
+
+if [ "$1" = "configure" ]; then
+    if ! getent passwd familymon >/dev/null; then
+        adduser --system --group --no-create-home --home /nonexistent --quiet familymon
+    fi
+    # The dashboard password: read by systemd as root, by nobody else.
+    if [ -f /etc/familymon/dashboard.env ]; then
+        chown root:root /etc/familymon/dashboard.env
+        chmod 0600 /etc/familymon/dashboard.env
+    fi
+    install -d -m 0750 -o root -g familymon /var/lib/familymon
+    chown root:familymon /var/lib/familymon
+    chmod 0750 /var/lib/familymon
+
+    # Retire earlier releases' per-user units: stop them in every running
+    # user manager, then drop enable/mask links from every home. find(1)
+    # never follows symlinks and deletes relative to the directory it walked,
+    # so a link planted in a home can't redirect the deletion elsewhere.
     for u in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
-        systemctl --user -M "$u@" daemon-reload 2>/dev/null || true
-        for unit in familymon-capture.service familymon-dashboard.service; do
-            if systemctl --user -M "$u@" is-active --quiet "$unit" 2>/dev/null; then
-                systemctl --user -M "$u@" restart "$unit" 2>/dev/null \
-                    && echo "familymon: restarted $unit for $u" || true
-            fi
-        done
+        systemctl --user -M "$u@" stop $OLD_USER_UNITS 2>/dev/null || true
+        pkill -u "$u" -f 'familymon\.cli (capture-run|dashboard)' 2>/dev/null || true
     done
+    getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $6}' | while read -r home; do
+        [ -d "$home/.config/systemd/user" ] || continue
+        find "$home/.config/systemd/user" -mindepth 1 -maxdepth 2 -type l \
+            -name 'familymon-*' -delete 2>/dev/null || true
+    done
+
+    # Move the monitored user's old state out of their home (idempotent).
+    if [ -f /var/lib/familymon/policy.yaml ]; then
+        /usr/bin/familymonctl migrate-state \
+            || echo "familymon: state migration failed (see above); re-run: familymonctl migrate-state" >&2
+    fi
+
+    systemctl daemon-reload || true
+    systemctl enable $UNITS_LONG $TIMERS >/dev/null 2>&1 || true
+    systemctl restart $UNITS_LONG || true
+    systemctl start $TIMERS || true
 fi
 exit 0
 EOF
 chmod 0755 "$STAGING/DEBIAN/postinst"
+cat > "$STAGING/DEBIAN/prerm" <<'EOF'
+#!/bin/sh
+set -e
+if [ "$1" = "remove" ]; then
+    systemctl disable --now familymon-capture.service familymon-dashboard.service \
+        familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer \
+        familymon-enforce.timer familymon-chargeback.timer familymon-webblock.timer \
+        >/dev/null 2>&1 || true
+fi
+exit 0
+EOF
+chmod 0755 "$STAGING/DEBIAN/prerm"
 cat > "$STAGING/DEBIAN/conffiles" <<EOF
 /etc/familymon/messaging_apps.yaml
 /etc/familymon/game_apps.yaml

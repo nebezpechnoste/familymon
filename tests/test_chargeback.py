@@ -174,3 +174,18 @@ def test_focused_rule_bills_only_when_the_game_tab_is_focused(sessions, tmp_path
     r = run_chargeback("kid", sessions, tmp_path / "s.json", lambda u, s: calls.append(s), now=t,
                        focused_title_is_game=is_game)
     assert calls == [60] and r.captures == 1
+
+
+def test_replaced_database_resets_the_watermark(sessions, tmp_path):
+    """A recreated DB restarts ids at 1; a stale higher watermark must not
+    hide every new capture from billing (the old bug)."""
+    import json
+
+    state = tmp_path / "charges.json"
+    today = TODAY.date().isoformat()
+    state.write_text(json.dumps({"kid": {"day": today, "last_capture_id": 10_000,
+                                         "charged_seconds_today": 0}}))
+    _cap(sessions, TODAY - timedelta(minutes=2), "firefox", "games")
+    deltas = []
+    r = run_chargeback("kid", sessions, state, lambda u, s: deltas.append(s), now=TODAY)
+    assert r.captures == 1 and deltas == [60]

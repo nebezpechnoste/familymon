@@ -387,3 +387,64 @@ def test_school_break_banner_and_no_conflicts(client: TestClient, tmp_path):
     assert r.status_code == 200
     assert "School break: Half term" in r.text
     assert "during Economics" not in r.text
+
+
+def _event(sessions: sessionmaker, kind: str, data: dict, at: datetime | None = None) -> None:
+    from familymon.storage.models import Event
+
+    with sessions() as s:
+        s.add(Event(at=at or datetime.now(), kind=kind, data=data))
+        s.commit()
+
+
+def test_banner_shows_not_logged_in_from_the_watcher(sessions: sessionmaker):
+    """The root watcher knows nobody is logged in; a quiet timeline then is
+    not 'Capture DOWN'."""
+    _seed(sessions, datetime.now() - timedelta(hours=2), category="browsing_other")
+    _event(sessions, "heartbeat", {"status": "idle", "session": "none",
+                                   "age_seconds": 7200, "last_capture_at": None})
+    c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
+    r = c.get("/", auth=(_USER, _PASS))
+    assert "heartbeat idle" in r.text and "Not logged in" in r.text
+
+
+def test_banner_says_when_capture_is_down_during_a_session(sessions: sessionmaker):
+    _event(sessions, "heartbeat", {"status": "dead", "session": "active",
+                                   "age_seconds": 900, "last_capture_at": None})
+    c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
+    r = c.get("/", auth=(_USER, _PASS))
+    assert "Capture DOWN" in r.text and "while the session is active" in r.text
+
+
+def test_banner_flags_a_silent_watcher(sessions: sessionmaker):
+    _event(sessions, "heartbeat", {"status": "ok", "session": "active"},
+           at=datetime.now() - timedelta(hours=1))
+    c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
+    r = c.get("/", auth=(_USER, _PASS))
+    assert "Heartbeat watcher not running" in r.text
+
+
+def test_failures_and_tamper_attempts_are_shown_for_the_day(sessions: sessionmaker):
+    _event(sessions, "capture_failed", {"error": "probe exited -9", "session": "active"})
+    _event(sessions, "capture_failed", {"error": "probe exited -9", "session": "active"})
+    _event(sessions, "capture_tamper", {"sink_rejected": 2, "session": "active"})
+    c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
+    r = c.get("/", auth=(_USER, _PASS))
+    assert "2 capture(s) failed while the session was open" in r.text
+    assert "1 forged window-list attempt(s) rejected" in r.text
+
+
+def test_dashboard_opens_the_database_read_only(tmp_path, monkeypatch):
+    """It faces the network: it must not be able to write the history."""
+    import familymon.dashboard.app as dash
+    from familymon.storage.session import make_engine
+
+    monkeypatch.setenv("FAMILYMON_STATE_DIR", str(tmp_path))
+    make_engine(tmp_path / "captures.db").dispose()
+    opened = []
+    real = dash.make_readonly_engine
+    monkeypatch.setattr(dash, "make_readonly_engine", lambda p: opened.append(p) or real(p))
+    app = create_app(user=_USER, pwd=_PASS)
+    assert opened == [tmp_path / "captures.db"]
+    r = TestClient(app).get("/", auth=(_USER, _PASS))
+    assert r.status_code == 200

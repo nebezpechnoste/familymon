@@ -20,15 +20,16 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from dbus_next import Message, MessageType
 from dbus_next.aio import MessageBus
 from dbus_next.constants import BusType, RequestNameReply
-from dbus_next.service import ServiceInterface, method
 
 from .backend import CaptureResult, WindowSnapshot
 from .messaging_skip import MessagingSkipList
@@ -42,10 +43,12 @@ class _WindowList:
     windows: list[WindowSnapshot]
     logical_size: tuple[float, float]
     screen_count: int
+    # False when KWin's answer never arrived (as opposed to an empty desktop).
+    ok: bool = True
 
 
 _KWIN_WINDOW_LIST_SCRIPT = r"""
-var out = {windows: [], vw: 0, vh: 0, screens: 0, err: null};
+var out = {nonce: "@NONCE@", windows: [], vw: 0, vh: 0, screens: 0, err: null};
 try {
     var wins = workspace.windowList();
     for (var i = 0; i < wins.length; i++) {
@@ -78,39 +81,87 @@ callDBus(
 );
 """
 
+SINK_NAME = "org.familymon.WindowSink"
+_SINK_PATH = "/sink"
 
-class _WindowSink(ServiceInterface):
-    """D-Bus service the KWin script calls back into with the window-list JSON."""
+
+def new_nonce() -> str:
+    return secrets.token_hex(16)
+
+
+def render_window_list_script(nonce: str) -> str:
+    """The KWin script for one tick. The nonce is echoed back in the payload,
+    so the sink can tell this tick's answer from a replayed or forged one."""
+    if not nonce.isalnum():
+        raise ValueError("nonce must be alphanumeric")
+    return _KWIN_WINDOW_LIST_SCRIPT.replace("@NONCE@", nonce)
+
+
+class _WindowSink:
+    """Receives the KWin script's callback on the session bus.
+
+    Trust model: the session bus is shared with everything the monitored user
+    runs, so anyone can call Push. A push is accepted only when it comes from
+    KWin's own bus connection (its unique name, which the bus assigns and
+    nobody can claim) AND carries this tick's nonce. Everything else is
+    counted in `rejected`, which the capture supervisor records as tamper
+    evidence. A script the user loads into KWin themselves would pass the
+    sender check, which is what the nonce is for: it lives in a file only the
+    script KWin was told to load contains.
+    """
 
     def __init__(self) -> None:
-        super().__init__("org.familymon.WindowSink")
-        self._payload: str | None = None
+        self._payload: dict | None = None
         self._event = asyncio.Event()
+        self._nonce: str | None = None
+        self._sender: str | None = None
+        self.rejected = 0
 
-    @method()
-    def Push(self, json_str: "s"):  # noqa: N802 — D-Bus method naming
-        # NOTE (trust model): this sink lives on the *session* bus, so any
-        # same-UID process could also call Push and forge/suppress the window
-        # list. We can't fully close that here — an in-session nonce is readable
-        # by the same UID, and dbus-next doesn't expose the caller's unique name
-        # to a high-level @method handler for sender-pinning. The same actor
-        # could also just kill the capture process. Robust defence is the
-        # phase-4 root deployment + heartbeat watcher (task #17); __aenter__ at
-        # least refuses to start if it can't take sole ownership of the name,
-        # so a pre-squatted sink can't silently divert KWin's callback.
-        self._payload = json_str
-        self._event.set()
-
-    def reset(self) -> None:
-        """Clear pending payload + event. Call before triggering KWin script.
-
-        Kept separate from `wait()` so a Push that arrives between reset() and
-        loadScript() is preserved by the subsequent wait().
-        """
+    def arm(self, nonce: str, kwin_sender: str | None) -> None:
+        """Clear any pending payload and accept only this nonce from this
+        sender. Call before loading the KWin script, so a Push that arrives
+        between arm() and wait() is kept."""
         self._event.clear()
         self._payload = None
+        self._nonce = nonce
+        self._sender = kwin_sender
 
-    async def wait(self, timeout: float = 3.0) -> str | None:
+    def offer(self, sender: str | None, json_str: str) -> bool:
+        """One Push call. Returns whether it was accepted."""
+        try:
+            raw = json.loads(json_str)
+        except (TypeError, ValueError):
+            raw = None
+        ok = (
+            self._nonce is not None
+            and self._sender is not None
+            and sender == self._sender
+            and isinstance(raw, dict)
+            and raw.get("nonce") == self._nonce
+            and self._payload is None
+        )
+        if not ok:
+            self.rejected += 1
+            return False
+        self._payload = raw
+        self._event.set()
+        return True
+
+    def handle(self, msg: Message) -> Message | None:
+        """dbus-next message handler: answers Push calls on /sink."""
+        if (
+            msg.message_type != MessageType.METHOD_CALL
+            or msg.path != _SINK_PATH
+            or msg.interface != SINK_NAME
+            or msg.member != "Push"
+        ):
+            return None
+        body = msg.body[0] if msg.body and isinstance(msg.body[0], str) else None
+        self.offer(msg.sender, body)
+        # Same empty reply either way: a forger learns nothing.
+        return Message.new_method_return(msg)
+
+    async def wait(self, timeout: float = 3.0) -> dict | None:
         try:
             await asyncio.wait_for(self._event.wait(), timeout=timeout)
         except TimeoutError:
@@ -136,30 +187,42 @@ def _user_session_env() -> dict[str, str]:
 class KWinWaylandBackend:
     name = "kwin_wayland"
 
-    def __init__(self, skip_list: MessagingSkipList | None = None) -> None:
+    def __init__(
+        self,
+        skip_list: MessagingSkipList | None = None,
+        *,
+        script_path: Path | None = None,
+        nonce: str | None = None,
+    ) -> None:
+        """`script_path` + `nonce`: a window-list script someone else wrote
+        (the root supervisor puts it where the session user can't modify
+        it). Without them the backend writes its own temp script per run."""
+        if (script_path is None) != (nonce is None):
+            raise ValueError("script_path and nonce go together")
         self._skip_list = skip_list or MessagingSkipList.from_file()
         self._bus: MessageBus | None = None
         self._sink: _WindowSink | None = None
         self._scripting: Any = None
-        self._script_path: Path | None = None
+        self._script_path: Path | None = script_path
+        self._nonce: str | None = nonce
+        self._owns_script = script_path is None
         self._spectacle_env = _user_session_env()
 
     async def __aenter__(self) -> "KWinWaylandBackend":
         self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
 
         self._sink = _WindowSink()
-        self._bus.export("/sink", self._sink)
-        reply = await self._bus.request_name("org.familymon.WindowSink")
+        self._bus.add_message_handler(self._sink.handle)
+        reply = await self._bus.request_name(SINK_NAME)
         if reply not in (
             RequestNameReply.PRIMARY_OWNER,
             RequestNameReply.ALREADY_OWNER,
         ):
             # Someone is squatting the sink name; KWin's callback would go to
-            # them and our window list would come from an unknown sender.
-            # Refuse to start rather than trust forged data.
+            # them. Refuse to start rather than run blind.
             raise RuntimeError(
                 "familymon could not take sole ownership of the "
-                f"org.familymon.WindowSink D-Bus name (reply={reply.name}); "
+                f"{SINK_NAME} D-Bus name (reply={reply.name}); "
                 "another process may be squatting it"
             )
 
@@ -167,18 +230,50 @@ class KWinWaylandBackend:
         obj = self._bus.get_proxy_object("org.kde.KWin", "/Scripting", intro)
         self._scripting = obj.get_interface("org.kde.kwin.Scripting")
 
-        fd, path = tempfile.mkstemp(suffix=".js", prefix="familymon_winlist_")
-        os.write(fd, _KWIN_WINDOW_LIST_SCRIPT.encode())
-        os.close(fd)
-        self._script_path = Path(path)
+        if self._owns_script:
+            self._nonce = new_nonce()
+            fd, path = tempfile.mkstemp(suffix=".js", prefix="familymon_winlist_")
+            os.write(fd, render_window_list_script(self._nonce).encode())
+            os.close(fd)
+            self._script_path = Path(path)
 
         return self
+
+    async def _kwin_sender(self) -> str | None:
+        """KWin's unique bus name: the only sender the sink trusts."""
+        assert self._bus is not None
+        reply = await self._bus.call(
+            Message(
+                destination="org.freedesktop.DBus",
+                path="/org/freedesktop/DBus",
+                interface="org.freedesktop.DBus",
+                member="GetNameOwner",
+                signature="s",
+                body=["org.kde.KWin"],
+            )
+        )
+        if reply is None or reply.message_type != MessageType.METHOD_RETURN:
+            return None
+        return reply.body[0]
+
+    async def _unload_script(self) -> None:
+        try:
+            await self._scripting.call_unload_script(str(self._script_path))
+        except Exception as e:  # best effort
+            logger.debug("KWin unloadScript failed: %s", e)
+
+    def take_sink_rejected(self) -> int:
+        """Rejected pushes since the last call (then reset)."""
+        if self._sink is None:
+            return 0
+        n, self._sink.rejected = self._sink.rejected, 0
+        return n
 
     async def __aexit__(self, *_: object) -> None:
         await self.close()
 
     async def close(self) -> None:
-        if self._script_path and self._script_path.exists():
+        if self._owns_script and self._script_path and self._script_path.exists():
             try:
                 self._script_path.unlink()
             except OSError:
@@ -195,25 +290,33 @@ class KWinWaylandBackend:
         assert self._sink is not None
         assert self._script_path is not None
 
-        empty = _WindowList(windows=[], logical_size=(0.0, 0.0), screen_count=0)
+        assert self._nonce is not None
 
-        self._sink.reset()
+        empty = _WindowList(windows=[], logical_size=(0.0, 0.0), screen_count=0, ok=False)
+
+        try:
+            kwin = await self._kwin_sender()
+        except Exception as e:
+            logger.warning("could not resolve KWin's bus name: %s", e)
+            return empty
+        self._sink.arm(self._nonce, kwin)
         try:
             await self._scripting.call_load_script(str(self._script_path))
             await self._scripting.call_start()
         except Exception as e:
             logger.warning("KWin scripting load/start failed: %s", e)
+            await self._unload_script()
             return empty
 
-        payload = await self._sink.wait(timeout=3.0)
-        if payload is None:
-            logger.warning("KWin scripting timed out without payload")
-            return empty
-
-        try:
-            raw = json.loads(payload)
-        except json.JSONDecodeError:
-            logger.warning("KWin scripting returned non-JSON payload")
+        raw = await self._sink.wait(timeout=3.0)
+        # KWin keeps every loaded instance (re-loading the same path adds
+        # another), so unload each tick's or they pile up in the compositor.
+        await self._unload_script()
+        if raw is None:
+            logger.warning(
+                "KWin scripting timed out without an accepted payload "
+                "(rejected pushes so far: %d)", self._sink.rejected
+            )
             return empty
 
         if raw.get("err"):
@@ -279,6 +382,12 @@ class KWinWaylandBackend:
                 pass
 
     async def snapshot(self, *, suppress_screenshot_reason: str | None = None) -> CaptureResult:
+        result = await self._snapshot(suppress_screenshot_reason)
+        # Counted last, so pushes that arrive while spectacle runs are included.
+        rejected = self.take_sink_rejected()
+        return result.model_copy(update={"sink_rejected": rejected}) if rejected else result
+
+    async def _snapshot(self, suppress_screenshot_reason: str | None) -> CaptureResult:
         wl = await self._enumerate_windows()
         windows = wl.windows
         active = next((w for w in windows if w.active), None)
@@ -296,6 +405,18 @@ class KWinWaylandBackend:
             "other_windows": others,
             "messaging_present": messaging_present,
         }
+
+        # Without a window list there is no way to know whether a messaging
+        # window is on screen, so no screenshot: the redaction contract
+        # outranks a frame.
+        if not wl.ok:
+            return CaptureResult(
+                **common,
+                window_list_ok=False,
+                screenshot_bytes=None,
+                screenshot_skipped_reason=suppress_screenshot_reason
+                or "window_list_unavailable",
+            )
 
         # Caller-driven suppression (session backgrounded / locked) takes
         # precedence — no point grabbing a frame at all.

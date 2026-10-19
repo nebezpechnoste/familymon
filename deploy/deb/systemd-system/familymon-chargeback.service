@@ -1,8 +1,9 @@
 # Charge browser-game minutes (which timekpr can't see) to the user's
 # PlayTime budget. One tick; driven by familymon-chargeback.timer. Root:
-# needs timekpr's admin surface and read access to the kid's capture DB.
+# needs timekpr's admin surface; reads the capture DB read-only.
 [Unit]
 Description=familymon browser-game charge-back to timekpr PlayTime
+ConditionPathExists=/var/lib/familymon/policy.yaml
 After=timekpr.service
 
 [Service]

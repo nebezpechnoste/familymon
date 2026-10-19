@@ -1,0 +1,24 @@
+# Capture supervisor. Runs as root, so the monitored user can neither stop nor
+# mask it; follows their graphical session through logind and runs one
+# short-lived `capture-probe` as them per tick (KWin only serves its own
+# session's clients). See familymon/capture/supervisor.py.
+#
+# PrivateTmp: the probe (and spectacle under it) inherit this mount namespace,
+# so the temporary screenshot file sits in a /tmp the user can't see.
+# RuntimeDirectory: /run/familymon/kwin holds each tick's KWin script.
+[Unit]
+Description=familymon capture supervisor
+After=systemd-logind.service
+ConditionPathExists=/var/lib/familymon/policy.yaml
+
+[Service]
+ExecStart=/usr/bin/familymonctl capture-supervise
+Restart=always
+RestartSec=10
+Nice=10
+PrivateTmp=yes
+RuntimeDirectory=familymon
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

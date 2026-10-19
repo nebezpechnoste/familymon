@@ -1,0 +1,12 @@
+# Every minute, a few seconds past it: block starts are minute-exact.
+# Enable:  systemctl enable --now familymon-notify.timer
+[Unit]
+Description=familymon periodic schedule notifications
+
+[Timer]
+OnCalendar=*-*-* *:*:05
+AccuracySec=5s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

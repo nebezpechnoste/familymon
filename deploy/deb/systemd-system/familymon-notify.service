@@ -1,0 +1,10 @@
+# Desktop notification for notify-flagged schedule blocks starting now, and
+# the live lesson-conflict warning. Root; delivers into the monitored user's
+# session the same way the web-block notices do (notify.send_as).
+[Unit]
+Description=familymon schedule notification tick
+ConditionPathExists=/var/lib/familymon/policy.yaml
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/familymonctl schedule notify-tick

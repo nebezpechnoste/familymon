@@ -96,3 +96,15 @@ def test_not_a_game(monkeypatch):
 def test_from_system_loads_packaged_curated_list():
     lib = GameLibrary.from_system()  # no Steam install needed; curated list always loads
     assert "minecraft" in lib.curated_classes
+
+
+def test_remembered_games_survive_a_hidden_library(tmp_path):
+    """Deleting a game's appmanifest (in the monitored user's home) must not
+    take it off the budget: remembered dirs stay until the parent forgets them."""
+    from familymon.capture.games import load_known_games, remember_games, save_known_games
+
+    known = tmp_path / "known_games.json"
+    assert remember_games(known, {"/g/a", "/g/b"}) == {"/g/a", "/g/b"}
+    assert remember_games(known, {"/g/a"}) == {"/g/a", "/g/b"}
+    save_known_games(known, load_known_games(known) - {"/g/b"})
+    assert remember_games(known, set()) == {"/g/a"}

@@ -9,6 +9,7 @@ integration by the smoke script.
 from __future__ import annotations
 
 import io
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -196,27 +197,114 @@ async def test_window_sink_returns_none_on_timeout():
     assert result is None
 
 
+KWIN = ":1.42"
+
+
+def _payload(nonce: str, **extra) -> str:
+    return json.dumps({"nonce": nonce, "windows": [], **extra})
+
+
 @pytest.mark.asyncio
-async def test_window_sink_returns_pushed_payload():
+async def test_window_sink_accepts_kwin_push_with_the_nonce():
     sink = _WindowSink()
-    sink.Push('["window1","window2"]')
+    sink.arm("abc123", KWIN)
+    assert sink.offer(KWIN, _payload("abc123", vw=10))
     result = await sink.wait(timeout=0.5)
-    assert result == '["window1","window2"]'
+    assert result["vw"] == 10
+    assert sink.rejected == 0
 
 
 @pytest.mark.asyncio
-async def test_window_sink_reset_drops_stale_payload():
+async def test_window_sink_rejects_a_push_from_another_connection():
+    """Any session process can call Push; only KWin's connection counts."""
     sink = _WindowSink()
-    sink.Push('"stale"')
-    sink.reset()
-    result = await sink.wait(timeout=0.05)
-    assert result is None
+    sink.arm("abc123", KWIN)
+    assert not sink.offer(":1.99", _payload("abc123"))
+    assert await sink.wait(timeout=0.05) is None
+    assert sink.rejected == 1
 
 
 @pytest.mark.asyncio
-async def test_window_sink_push_between_reset_and_wait_is_preserved():
+async def test_window_sink_rejects_kwin_push_with_a_wrong_nonce():
+    """A script the user loaded into KWin themselves passes the sender check
+    but doesn't know this tick's nonce."""
     sink = _WindowSink()
-    sink.reset()
-    sink.Push('"raced"')
-    result = await sink.wait(timeout=0.5)
-    assert result == '"raced"'
+    sink.arm("abc123", KWIN)
+    assert not sink.offer(KWIN, _payload("guess"))
+    assert not sink.offer(KWIN, "not json")
+    assert await sink.wait(timeout=0.05) is None
+    assert sink.rejected == 2
+
+
+@pytest.mark.asyncio
+async def test_window_sink_counts_a_second_push_as_rejected():
+    """The first accepted payload wins; a racing duplicate is tamper evidence."""
+    sink = _WindowSink()
+    sink.arm("abc123", KWIN)
+    assert sink.offer(KWIN, _payload("abc123", vw=1))
+    assert not sink.offer(KWIN, _payload("abc123", vw=2))
+    assert (await sink.wait(timeout=0.5))["vw"] == 1
+    assert sink.rejected == 1
+
+
+@pytest.mark.asyncio
+async def test_window_sink_rejects_everything_before_arm():
+    sink = _WindowSink()
+    assert not sink.offer(KWIN, _payload("abc123"))
+    assert sink.rejected == 1
+
+
+@pytest.mark.asyncio
+async def test_window_sink_arm_drops_a_stale_payload():
+    sink = _WindowSink()
+    sink.arm("one", KWIN)
+    sink.offer(KWIN, _payload("one"))
+    sink.arm("two", KWIN)
+    assert await sink.wait(timeout=0.05) is None
+
+
+def test_window_sink_handler_replies_identically_and_ignores_other_calls():
+    from dbus_next import Message, MessageType
+
+    sink = _WindowSink()
+    sink.arm("abc123", KWIN)
+    forged = Message(
+        destination="org.familymon.WindowSink", path="/sink",
+        interface="org.familymon.WindowSink", member="Push",
+        signature="s", body=[_payload("abc123")], serial=7,
+    )
+    forged.sender = ":1.99"
+    reply = sink.handle(forged)
+    assert reply is not None and reply.message_type == MessageType.METHOD_RETURN
+    assert sink.rejected == 1
+    other = Message(
+        destination="org.familymon.WindowSink", path="/elsewhere",
+        interface="org.familymon.WindowSink", member="Push",
+        signature="s", body=["x"], serial=8,
+    )
+    assert sink.handle(other) is None
+
+
+def test_rendered_script_carries_the_nonce_and_refuses_odd_ones():
+    from familymon.capture.kwin_wayland import render_window_list_script
+
+    assert 'nonce: "abc123"' in render_window_list_script("abc123")
+    with pytest.raises(ValueError):
+        render_window_list_script('x"; callDBus(')
+
+
+@pytest.mark.asyncio
+async def test_no_screenshot_when_the_window_list_failed():
+    """Without KWin's window list a messaging window can't be found, so a
+    frame could leak a chat: skip it (this used to save it unredacted)."""
+    backend = _make_backend(_skip("telegram-desktop"))
+    backend._enumerate_windows.return_value = _WindowList(
+        windows=[], logical_size=(0.0, 0.0), screen_count=0, ok=False
+    )
+    backend._spectacle.return_value = _png()
+
+    result = await backend.snapshot()
+    assert result.screenshot_bytes is None
+    assert result.window_list_ok is False
+    assert result.screenshot_skipped_reason == "window_list_unavailable"
+    backend._spectacle.assert_not_called()

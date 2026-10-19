@@ -1,0 +1,33 @@
+# LAN dashboard, read-only. Runs as the unprivileged `familymon` system user,
+# which can read the capture DB, screenshots and schedule (group familymon)
+# and nothing else; the sandbox below makes the whole filesystem read-only.
+#
+# Credentials: FAMILYMON_DASH_USER / FAMILYMON_DASH_PASS (and optionally
+# FAMILYMON_DASH_BIND=0.0.0.0 for LAN exposure) in /etc/familymon/dashboard.env,
+# root:root 0600. systemd reads it before dropping privileges, so neither the
+# dashboard process nor the monitored user can read the file.
+[Unit]
+Description=familymon dashboard
+After=network.target
+ConditionPathExists=/etc/familymon/dashboard.env
+
+[Service]
+User=familymon
+Group=familymon
+EnvironmentFile=/etc/familymon/dashboard.env
+Environment=FAMILYMON_STATE_DIR=/var/lib/familymon
+ExecStart=/usr/bin/familymonctl dashboard
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

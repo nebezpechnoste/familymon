@@ -1,7 +1,0 @@
-# Capture-freshness check; non-zero exit (stale/dead) marks the unit failed.
-[Unit]
-Description=familymon heartbeat
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/familymonctl heartbeat-once

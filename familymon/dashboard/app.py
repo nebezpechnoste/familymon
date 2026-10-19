@@ -37,7 +37,7 @@ from sqlalchemy.orm import sessionmaker
 
 from familymon.config import capture_interval_seconds, db_path
 from familymon.storage.models import Capture, Classification
-from familymon.storage.session import make_engine, make_session_factory
+from familymon.storage.session import make_readonly_engine, make_session_factory
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -218,7 +218,10 @@ def create_app(
         )
 
     if session_factory is None:
-        session_factory = make_session_factory(make_engine(db_path()))
+        # Read-only: the dashboard faces the network and never needs to
+        # write; in production it runs as the unprivileged `familymon` user
+        # with group read access only (storage/perms.py).
+        session_factory = make_session_factory(make_readonly_engine(db_path()))
 
     app = FastAPI(title="familymon", docs_url=None, redoc_url=None)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -288,9 +291,12 @@ def _render_timeline(
     templates.env.filters.setdefault("fmt_duration", _fmt_duration)
     templates.env.filters.setdefault("fmt_clock", _fmt_clock)
 
-    from familymon.heartbeat import check_capture_freshness
+    from familymon.heartbeat import capture_problems, check_capture_freshness, latest_heartbeat
 
-    heartbeat = check_capture_freshness(sessions)
+    # The root watcher's verdict knows whether anyone was logged in; without
+    # one (dev runs, no timer) fall back to plain capture freshness.
+    heartbeat = latest_heartbeat(sessions) or check_capture_freshness(sessions)
+    problems = capture_problems(sessions, *_day_bounds(target))
 
     return templates.TemplateResponse(
         request,
@@ -305,6 +311,7 @@ def _render_timeline(
             "conflicts": conflicts,
             "school_break": school_break,
             "heartbeat": heartbeat,
+            "problems": problems,
         },
     )
 

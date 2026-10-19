@@ -13,6 +13,7 @@ from pathlib import Path
 from sqlalchemy.orm import sessionmaker
 
 from familymon.storage.models import Capture as CaptureRow
+from familymon.storage.perms import secure
 
 from .backend import CaptureResult
 
@@ -68,17 +69,18 @@ class CapturePersistence:
                 and not same_as_prev
             )
             if should_save:
-                # mkdir's `mode` only applies to the leaf; the screenshots
-                # root would otherwise inherit the umask (0775 was observed on
-                # a deployed box). Create it explicitly and chmod every time so
-                # a root that already exists with lax bits gets tightened too.
-                self._dir.mkdir(parents=True, exist_ok=True)
-                self._dir.chmod(0o700)
+                # mkdir's `mode` only applies to the leaf, and a root that
+                # already exists may have lax bits (0775 was observed on a
+                # deployed box): secure every level, every time. Owner-only:
+                # nothing but root reads screenshots (storage/perms.py).
+                self._dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+                secure(self._dir)
                 day_dir = self._dir / result.captured_at.date().isoformat()
                 day_dir.mkdir(exist_ok=True, mode=0o700)
-                day_dir.chmod(0o700)
+                secure(day_dir)
                 shot_path = day_dir / f"{cap_id}.png"
                 shot_path.write_bytes(result.screenshot_bytes)
+                secure(shot_path)
                 row.screenshot_path = str(shot_path)
                 session.commit()
 

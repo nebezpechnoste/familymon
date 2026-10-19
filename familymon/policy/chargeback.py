@@ -17,8 +17,10 @@ Rules that keep it honest:
     yesterday onto today's budget.
   * Per-run cap, and every charge is logged (journal + an Event row in the
     root DB) for audit.
-  * The kid's database is opened READ-ONLY. A root process writing there
-    would leave root-owned journal files the capture loop can't remove.
+  * The capture database is opened READ-ONLY here; the audit Event goes
+    through the normal writer.
+  * A replaced database (ids restarting from 1) resets the watermark
+    instead of silently stopping all charges (`rewound_watermark`).
 
 Runs as root from `familymon-chargeback.timer`; pure logic here, the timekpr
 call is injected so it can be tested without a daemon.
@@ -33,24 +35,17 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from familymon.analyze.heuristics import looks_like_browser
 from familymon.storage.models import Capture, Classification
+from familymon.storage.session import make_readonly_engine  # noqa: F401 — re-export
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_SECONDS_PER_RUN = 1800  # 30 min — a sane ceiling for one 5-minute tick
-
-
-def make_readonly_engine(db_path: Path) -> Engine:
-    """Open another user's SQLite file without ever writing to it (no
-    create_all, no migration, no journal files in their directory)."""
-    # pysqlite needs `uri=true` IN THE URL to honor the file: URI (a connect
-    # arg is ignored with a warning and the path is taken literally).
-    return create_engine(f"sqlite:///file:{db_path}?mode=ro&uri=true", future=True)
 
 
 @dataclass
@@ -90,6 +85,26 @@ class ChargeState:
         }
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         path.write_text(json.dumps(data, indent=1))
+
+
+def rewound_watermark(state: ChargeState, sessions: sessionmaker) -> bool:
+    """Reset the watermark when the capture DB's ids are now below it.
+
+    Ids only grow within one database, but a replaced database (recovery
+    after a crash, a restore, a migration) starts again from 1. Without this
+    every new capture would sit below the old watermark and never be charged.
+    Today's captures are still the only ones eligible, so a reset can't bill
+    an earlier day. Returns whether it reset."""
+    with sessions() as s:
+        top = s.scalar(select(func.max(Capture.id))) or 0
+    if state.last_capture_id <= top:
+        return False
+    logger.warning(
+        "chargeback: watermark %d is past the newest capture id %d (database "
+        "replaced?); starting over for today", state.last_capture_id, top,
+    )
+    state.last_capture_id = 0
+    return True
 
 
 def find_chargeable_captures(
@@ -164,6 +179,7 @@ def run_chargeback(
     when = now if now is not None else datetime.now()
     today = when.date()
     state = ChargeState.load(state_path, user, today)
+    rewound_watermark(state, user_sessions)
 
     rows = find_chargeable_captures(
         user_sessions,

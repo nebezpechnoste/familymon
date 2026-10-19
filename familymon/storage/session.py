@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -55,21 +54,20 @@ def make_engine(db_path: Path) -> Engine:
         _record_recovery(engine, recovery)
     # The DB holds sensitive monitoring metadata (window titles, classification
     # evidence). SQLite creates the file with default perms (0644 & ~umask), so
-    # tighten it to 0600 — and re-assert 0700 on the parent, since mkdir(mode=)
-    # above only takes effect when it freshly creates the dir. Other local
-    # accounts must not be able to read the monitoring history. WAL/SHM
-    # sidecars, if the journal mode ever creates them, are covered too.
-    for name, mode in (
-        (db_path, 0o600),
-        (db_path.with_name(db_path.name + "-wal"), 0o600),
-        (db_path.with_name(db_path.name + "-shm"), 0o600),
-        (db_path.parent, 0o700),
+    # tighten it, and re-assert the parent, since mkdir(mode=) above only takes
+    # effect when it freshly creates the dir. Only root and (in production) the
+    # read-only dashboard group may read it; see perms.py. Journal/WAL
+    # sidecars, if present, are covered too.
+    from .perms import secure
+
+    for name in (
+        db_path,
+        db_path.with_name(db_path.name + "-journal"),
+        db_path.with_name(db_path.name + "-wal"),
+        db_path.with_name(db_path.name + "-shm"),
+        db_path.parent,
     ):
-        try:
-            if name.exists():
-                os.chmod(name, mode)
-        except OSError as e:
-            logger.warning("could not chmod %s to %o: %s", name, mode, e)
+        secure(name, shared=True)
     return engine
 
 
@@ -97,3 +95,12 @@ def _record_recovery(engine: Engine, recovery) -> None:
 
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)
+
+
+def make_readonly_engine(db_path: Path) -> Engine:
+    """Open a capture DB without ever writing to it: no create_all, no
+    migration, no recovery, no journal files. For readers that must not
+    modify the history (the dashboard runs this way)."""
+    # pysqlite needs `uri=true` IN THE URL to honor the file: URI (a connect
+    # arg is ignored with a warning and the path is taken literally).
+    return create_engine(f"sqlite:///file:{db_path}?mode=ro&uri=true", future=True)

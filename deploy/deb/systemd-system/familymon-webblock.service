@@ -3,6 +3,7 @@
 # by familymon-webblock.timer. Root: writes /etc/opt/chrome/policies/managed.
 [Unit]
 Description=familymon lesson-time web block (Chrome managed policy)
+ConditionPathExists=/var/lib/familymon/policy.yaml
 
 [Service]
 Type=oneshot
