@@ -74,7 +74,7 @@ def _check_not_symlinked(src: Path, home: Path) -> None:
 
 
 def _copy_db(src_db: Path, new_db: Path, src_shots: Path, dst_shots: Path) -> int:
-    src = sqlite3.connect(f"file:{src_db}?mode=ro", uri=True)
+    src = sqlite3.connect(_ro_uri(src_db), uri=True)
     try:
         dst = sqlite3.connect(new_db)
         try:
@@ -95,6 +95,11 @@ def _copy_db(src_db: Path, new_db: Path, src_shots: Path, dst_shots: Path) -> in
         src.close()
 
 
+def _ro_uri(path: Path) -> str:
+    """A read-only SQLite URI for an absolute path, percent-encoded."""
+    return path.resolve().as_uri() + "?mode=ro"
+
+
 def _columns(con: sqlite3.Connection, schema: str, table: str) -> list[str]:
     return [r[1] for r in con.execute(f"PRAGMA {schema}.table_info({table})")]
 
@@ -105,9 +110,12 @@ def _carry_root_rows(new_db: Path, old_root_db: Path) -> tuple[int, int]:
     root supervisor if an earlier migration attempt failed), with their
     classifications re-pointed at the new capture ids.
     Returns (events, captures) carried."""
-    con = sqlite3.connect(new_db)
+    # URI mode must be on for the main connection, or ATTACH takes the URI as
+    # a literal file name on SQLite builds without SQLITE_USE_URI (the CI
+    # runner's does; this was caught there, not on the dev machine).
+    con = sqlite3.connect(new_db.resolve().as_uri(), uri=True)
     try:
-        con.execute("ATTACH DATABASE ? AS old", (f"file:{old_root_db}?mode=ro",))
+        con.execute("ATTACH DATABASE ? AS old", (_ro_uri(old_root_db),))
         tables = {r[0] for r in con.execute("SELECT name FROM old.sqlite_master")}
         events = captures = 0
         if "event" in tables:
