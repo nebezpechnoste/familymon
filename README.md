@@ -6,7 +6,7 @@ Captures screenshots and window state every ~60 s, classifies activity using che
 
 **Privacy is the design constraint, not an afterthought.** Screenshots stay on the laptop they were captured on. Messaging-app windows are skipped at capture time. Classification runs locally on a small VLM after a bootstrap labeling phase that uses an interactive Claude Code session, not the Anthropic API.
 
-The full design lives in [`docs/PLAN.md`](docs/PLAN.md).
+**Documentation.** familymon has no settings UI. It is meant to be set up and run by an AI agent (for example Claude Code) acting for the parent. Start at [`AGENTS.md`](AGENTS.md), which routes you to [concepts](docs/concepts.md), operating guides ([install](docs/operate/install.md), [configure from the parent's intent](docs/operate/configure-from-intent.md), [verify](docs/operate/verify-and-health.md), [troubleshoot](docs/operate/troubleshoot.md)), the [CLI](docs/reference/cli.md), [config](docs/reference/config.md) and [files/units](docs/reference/files-and-units.md) references, and the [developer docs](docs/develop/architecture.md). The original design plan is [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Status
 
