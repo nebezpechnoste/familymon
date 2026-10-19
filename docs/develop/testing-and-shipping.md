@@ -107,7 +107,7 @@ Safety:
 
 ## CI
 
-`.github/workflows/tests.yml`: runs on push to `main` and on every pull request, on `ubuntu-latest`. Steps: `actions/checkout@v5`, `astral-sh/setup-uv@v6`, `sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr`, `actions/setup-node@v5` (node 22), then `uv run --python 3.14 --all-extras --locked pytest -q`.
+`.github/workflows/tests.yml`: runs on push to `main` and on every pull request, on `ubuntu-latest`, with a read-only `GITHUB_TOKEN`. Steps: `actions/checkout`, `astral-sh/setup-uv`, `sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr`, `actions/setup-node` (node 22), then `uv run --python 3.14 --all-extras --locked pytest -q`. The action versions are whatever the file pins; Dependabot bumps them (below). Note for the maintainer: a `gh` token without the `workflow` scope cannot merge a PR that edits a workflow file; merge such a PR with git over SSH (`git fetch origin pull/N/head`, merge, push) or run `gh auth refresh -s workflow` once.
 
 GitHub-side checks on the public repository, all free for a public repo (set up 2026-10-19):
 
