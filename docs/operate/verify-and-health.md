@@ -128,6 +128,19 @@ sudo familymonctl enforce plan                 # must print "live state matches 
 - Use `enforce show` or D-Bus for booleans. `timekpra --getuserinfo` prints enabled booleans as False because of a CLI bug.
 - PlayTime needs the global switches in `/etc/timekpr/timekpr.conf`. If limits are set but nothing happens, check those first.
 - PlayTime masks are effectively full-match on the process path or command line. The enforcement driver wraps bare `extra_masks` as `.*...*`. Flatpak apps appear as their `bwrap` wrapper.
+
+### Personal time (`personal_time` in `policy.yaml`)
+
+```bash
+sudo familymonctl personal-time                # today's window, in effect now or not, hidden counts
+sudo journalctl -u familymon-capture.service --since "1 hour ago" | grep "personal time"
+```
+
+- The command must print the window you intended (`20:00–22:00 (ends at the bedtime lock)`); `none` or an "unusable" error means a typo, and monitoring continues in full.
+- Inside the window, new capture rows have `personal_time` set and no screenshot: `hidden captures on <day>` grows by about one per minute while the kid is logged in, and `health` shows no new screenshot files for the period.
+- The dashboard shows a "Personal time HH:MM–HH:MM" note, category pills with a grey "personal time" tag and no titles for the span. Categories still add up in "Time by category".
+- The kid saw one "Personal time" notification (Plasma's notification history, never a raw screenshot). `sudo cat /var/lib/familymon/personal_time_notified.json` holds today's date once it was delivered.
+- The journal line `personal time until 22:00: no screenshots` appears at the first tick inside the window and `personal time over: screenshots resume` at the first tick after it.
 - Suspend and lock lockouts are enforced only while the session is active (timekpr-next behaviour, observed with 0.5.10): a locked session is never suspended. To grant extra time late at night, wake the screen without unlocking, grant, then unlock.
 
 ### One-off extensions (grants)

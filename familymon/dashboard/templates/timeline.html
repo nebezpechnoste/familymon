@@ -62,6 +62,10 @@
                      padding: 0.05rem 0.4rem; border-radius: 3px;
                      background: #fff3b0; color: #8a6d00;
                      font-size: 0.75rem; font-weight: 500; }
+  .block .pt-tag { display: inline-block; margin-left: 0.4rem;
+                   padding: 0.05rem 0.4rem; border-radius: 3px;
+                   background: #e8e8f4; color: #4a4a7a;
+                   font-size: 0.75rem; font-weight: 500; }
   .empty { color: var(--muted); padding: 1.5rem 0; }
 
   /* Category palette */
@@ -121,6 +125,10 @@
 <div class="break">School break: {{ school_break }} — lessons are not monitored on this day.</div>
 {% endif %}
 
+{% if personal_spans %}
+<div class="break">Personal time {% for s in personal_spans %}{{ s.start[11:16] }}–{{ s.end[11:16] }}{% if not loop.last %}, {% endif %}{% endfor %}: no screenshots; app names and titles hidden. Categories and game time are still counted.</div>
+{% endif %}
+
 <h2>Time by category</h2>
 {% if stats_sorted %}
   <div class="stats">
@@ -158,7 +166,11 @@
       {% for c in b.also %}
         <span class="pill also cat-{{ c }}">also: {{ c }}</span>
       {% endfor %}
-      <span class="app">{{ b.wm_class or '—' }}</span>
+      {% if b.personal_time %}
+        <span class="pt-tag">personal time</span>
+      {% else %}
+        <span class="app">{{ b.wm_class or '—' }}</span>
+      {% endif %}
       {% if b.conflict_subject %}
         <span class="conflict-tag">⚠ during {{ b.conflict_subject }}</span>
       {% endif %}

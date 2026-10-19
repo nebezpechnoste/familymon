@@ -66,6 +66,7 @@ Safety: a non-root run uses `~/.local/state/familymon`, which is a separate DB f
 | [`migrate-state`](#migrate-state) | WRITES-STATE | yes (refuses otherwise) | none (idempotent) |
 | [`events`](#events) | READ-ONLY | yes in practice | itself |
 | [`retention`](#retention) | WRITES-STATE (deletes files) | yes in practice | `--dry-run` |
+| [`personal-time`](#personal-time) | READ-ONLY | yes in practice | itself |
 | [`classify`](#classify) | WRITES-STATE | not enforced | none |
 | [`health`](#health) | READ-ONLY (see caveat) | no | itself |
 | [`heartbeat-once`](#heartbeat-once) | WRITES-STATE | not enforced | `health` |
@@ -91,7 +92,7 @@ Command tree:
 ```
 familymonctl [-v]
   status | capture-once | capture-run | capture-supervise | capture-probe (hidden) | classify | health
-         | heartbeat-once | migrate-state | events | retention | conflicts | dashboard
+         | heartbeat-once | migrate-state | events | retention | personal-time | conflicts | dashboard
   schedule  {import, refresh, show, notify-tick}
   enforce   {show, plan, apply, chargeback, grant, grants, games, revoke, web-block}
   extension {build}
@@ -173,6 +174,7 @@ familymonctl capture-supervise
 - Every `$FAMILYMON_INTERVAL` seconds (default 60): asks logind about the user's session. No session: the tick is skipped and nothing is recorded. Otherwise it writes a one-time KWin window-list script (nonce, random name, mode 0644) into `/run/familymon/kwin` (dir 0711), runs `capture-probe` as the user through `setpriv --reuid=<uid> --regid=<gid> --init-groups --no-new-privs -- env -i ... python -I -m familymon.cli capture-probe`, deletes the script, then does game detection, pHash dedup and persistence as root.
 - If the window list does not arrive no screenshot is taken (skip reason `window_list_unavailable`). A probe failure while a session exists writes a `capture_failed` event; a window-list push rejected by the sink (wrong D-Bus sender or wrong nonce) writes `capture_tamper`.
 - Re-scans the Steam library every 30 minutes and remembers games seen installed (`known_games.json`).
+- Personal time (`personal_time` in `policy.yaml`, re-read every tick together with the active grants): the probe is asked to skip the screenshot (reason `personal_time`, unless the session is locked or inactive, whose reason wins) and the row is flagged `personal_time` for the dashboard to hide its app and title. See [config.md](config.md) section 3.10. An unusable section is logged once (`personal time: policy unusable`) and monitoring continues in full.
 - Safety: the supervisor, not the kid, owns the loop. Stopping it stops monitoring, so tell the parent first. Do not run a second copy by hand next to the unit.
 - Undo: `sudo systemctl stop familymon-capture.service` (it restarts on boot while enabled).
 
@@ -280,6 +282,22 @@ familymonctl retention [--dry-run] [--days N]
 - Output: `deleted N screenshot(s), X MB, from D day(s) (first to last); keeping 90 days (days before YYYY-MM-DD)`, and `cleared the screenshot path on N capture row(s)` when rows changed. With `--dry-run` the verbs are `would delete` and `would clear`.
 - Exit: 0. A policy value that is not a whole number of days is a usage error (exit 1).
 - Verify: `sudo familymonctl retention --dry-run` (reports 0 afterwards), `sudo familymonctl health` (screenshot count and size), `sudo familymonctl events --kind screenshots_pruned`.
+
+## personal-time
+
+Show today's personal-time window (`personal_time` in `policy.yaml`, with active grants folded in) and what it covered.
+
+```
+familymonctl personal-time [--day YYYY-MM-DD]
+```
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `--day` | date | today | Day to count hidden captures for. The window shown is always today's. |
+
+- Root: yes in practice (reads `policy.yaml`, `grants.json` and the DB, read-only). Class: READ-ONLY.
+- Output: `personal time today: 20:00–22:00 (ends at the bedtime lock)` or `personal time today: none`; then `now HH:MM: in personal time (...)` or `now HH:MM: outside personal time (full capture)`; then, when a DB exists, `hidden captures on <day>: N (games: G, about M min)`. The minutes are `G` times `$FAMILYMON_INTERVAL`.
+- An unusable section exits 1 with `personal_time in policy.yaml is unusable: ...`. The capture supervisor then monitors in full and logs the same.
 
 ## events
 
@@ -419,6 +437,7 @@ familymonctl schedule notify-tick [--test] [--no-warn] [--warn-cooldown INTEGER]
 | `--warn-cooldown` | int (minutes) | 5 | Minutes between repeated warnings for the same lesson and category. |
 
 - Root: yes in production (it reads root state and delivers into the kid's session). A non-root dev run notifies into your own session. Class: TOUCHES-PROCESSES (notifications) and WRITES-STATE (`notified.json`, `warned.json` in the state directory; each is updated only when the notification or warning was actually delivered, so one that could not be delivered is retried on the next tick).
+- Personal time: while the policy's `personal_time` window is in effect, one notice per day ("Personal time", with the end time, that no screenshots are taken, that app names and titles are hidden, and that game time still counts). Marked in `personal_time_notified.json` only when delivered, so a kid who logs in later in the window still gets it. Prints `notified: personal time`. Runs before the schedule is read, so it works without a schedule.
 - No schedule: returns silently, exit 0.
 - Block-start notifications: one per due block per day; prints `notified: N`. With no session to notify, nothing is marked done.
 - Live warning: only while a `school` block is in progress and a DB exists; looks at the last 3 minutes of captures; prints `warned: <category> during <subject>`.

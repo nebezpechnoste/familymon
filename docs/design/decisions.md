@@ -109,3 +109,11 @@ Dated decisions with the reasoning, newest last. Each entry says what was decide
 **Why:** screenshots were never purged (the plan's 14-day and 24-hour windows belonged to a labeling pipeline that was never built) and had reached 3.3 GB after three weeks on the deployed laptop, now on the root filesystem. Three months keeps a term's worth of history to look back over while bounding both disk use and the amount of sensitive imagery at rest. The parent sets the number.
 
 **Consequences:** `familymonctl retention`, `familymon-retention.timer`, the `screenshots_pruned` event, and a `retention` section in `policy.yaml`.
+
+## 2026-10-19 · Personal time: no screenshots and no titles after an evening hour, game time still counts
+
+**Decided:** `personal_time` in `policy.yaml` names a daily window, from a clock time until that day's bedtime lock (or an explicit end). Inside it the capture takes no screenshot and flags the row; the dashboard and its API show only categories and durations for the period, no app names or titles. Classification and the browser-game chargeback run on those rows as usual. Rejected: pausing capture entirely (browser games would become free time, and the parent would lose the only signal that counts them), and keeping the screenshots but hiding them (every reader of captures would need its own exclusion, and the images would still sit on disk).
+
+**Why:** the parent's words: "I don't want to peek into what he watches, but I don't want to lose control over gaming time either." Titles are the classification signal, so they stay in the root-only database; what changes is what the parent looks at.
+
+**Consequences:** `policy/personal_time.py`, the `personal_time` capture column, a per-tick gate in the supervisor, masking in the dashboard, `familymonctl personal-time`, and a once-a-day notice to the child. Lessons inside the window are still blocked and warned about, and `familymonctl conflicts` is not masked.

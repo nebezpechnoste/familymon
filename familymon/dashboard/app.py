@@ -86,23 +86,31 @@ def _load_captures(sessions: sessionmaker, target: date) -> list[dict[str, Any]]
             .order_by(Capture.captured_at)
         ).all()
 
-    return [
-        {
-            "id": cap.id,
-            "captured_at": cap.captured_at.isoformat(),
-            "active_wm_class": cap.active_wm_class,
-            "active_title": cap.active_title,
-            "same_as_prev": cap.same_as_prev,
-            "screenshot_skipped_reason": cap.screenshot_skipped_reason,
-            "screenshot_on_disk": cap.screenshot_path is not None,
-            "category": cls.category if cls else None,
-            "confidence": cls.confidence if cls else None,
-            "source": cls.source if cls else None,
-            "evidence": cls.evidence_text if cls else None,
-            "present_categories": (cls.present_categories if cls else None) or [],
-        }
-        for cap, cls in rows
-    ]
+    out: list[dict[str, Any]] = []
+    for cap, cls in rows:
+        # Personal time (policy `personal_time`): the category stays, so game
+        # time is still accounted for; the app, the title, the evidence (which
+        # quotes the title) and the skip reason go. The parent chose not to
+        # see what exactly was watched. Applies to the page and the API alike.
+        hidden = bool(cap.personal_time)
+        out.append(
+            {
+                "id": cap.id,
+                "captured_at": cap.captured_at.isoformat(),
+                "active_wm_class": None if hidden else cap.active_wm_class,
+                "active_title": None if hidden else cap.active_title,
+                "same_as_prev": cap.same_as_prev,
+                "screenshot_skipped_reason": None if hidden else cap.screenshot_skipped_reason,
+                "screenshot_on_disk": cap.screenshot_path is not None,
+                "category": cls.category if cls else None,
+                "confidence": cls.confidence if cls else None,
+                "source": cls.source if cls else None,
+                "evidence": None if hidden else (cls.evidence_text if cls else None),
+                "present_categories": (cls.present_categories if cls else None) or [],
+                "personal_time": hidden,
+            }
+        )
+    return out
 
 
 def _block_duration_seconds(block: dict[str, Any], default_interval: float) -> float:
@@ -142,10 +150,12 @@ def _build_blocks(
         # alone would miss a class-stream → YouTube switch within one browser
         # window (same category+wm_class, so the captures merge).
         brand = streaming_brand_in_title(c["active_title"])
+        personal = bool(c.get("personal_time"))
         if (
             cur
             and cur["category"] == cat
             and cur["wm_class"] == c["active_wm_class"]
+            and cur["personal_time"] == personal
         ):
             cur["count"] += 1
             cur["end"] = c["captured_at"]
@@ -164,6 +174,7 @@ def _build_blocks(
                 "count": 1,
                 "present": set(c["present_categories"]),
                 "stream_brand": brand,
+                "personal_time": personal,
             }
     if cur is not None:
         blocks.append(cur)
@@ -173,6 +184,21 @@ def _build_blocks(
         # besides the primary. Surfaces the multi-window reality at a glance.
         b["also"] = sorted(b.pop("present") - {b["category"]})
     return blocks
+
+
+def _personal_time_spans(blocks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Runs of consecutive personal-time blocks, for the note above the
+    timeline: [{start, end}] as ISO timestamps."""
+    spans: list[dict[str, str]] = []
+    previous = False
+    for b in blocks:
+        if b.get("personal_time"):
+            if previous:
+                spans[-1]["end"] = b["end"]
+            else:
+                spans.append({"start": b["start"], "end": b["end"]})
+        previous = bool(b.get("personal_time"))
+    return spans
 
 
 def _compute_stats_from_blocks(
@@ -321,6 +347,7 @@ def _render_timeline(
             "school_break": school_break,
             "heartbeat": heartbeat,
             "problems": problems,
+            "personal_spans": _personal_time_spans(blocks),
         },
     )
 

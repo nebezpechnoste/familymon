@@ -27,6 +27,7 @@ What the code does:
 - Screenshots and metadata never leave the laptop. There is no upload, no cloud account, no telemetry.
 - Messaging windows are redacted at capture time. `familymonctl health` fails if a screenshot with a chat present ever reaches disk unredacted.
 - Screenshots are deleted after 90 days by a daily job (`retention.screenshots_days` in `policy.yaml`; `0` keeps them). Capture rows and classifications stay, so the timeline keeps its history without the images.
+- Personal time: from an evening hour the parent picks (`personal_time` in `policy.yaml`) until the bedtime lock, no screenshots are taken and the dashboard shows only categories and durations, no app names or titles. Game time still counts.
 - Window titles of everything on screen are recorded; they are the classification signal. They live in a database only root and the read-only dashboard can open. Logs carry capture ids, states and errors.
 - The dashboard binds to localhost unless configured otherwise, uses HTTP basic auth, and has no TLS: expose it on a trusted LAN or over a VPN such as Tailscale, never on the internet.
 

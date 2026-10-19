@@ -22,6 +22,7 @@ from familymon.analyze.dedup import PHashRingBuffer
 from familymon.capture.backend import CaptureResult, WindowSnapshot
 from familymon.capture.session_state import SessionStatus
 from familymon.capture.supervisor import (
+    PersonalTimeGate,
     ProbeOutcome,
     SessionTarget,
     kwin_script_drop,
@@ -30,6 +31,7 @@ from familymon.capture.supervisor import (
     session_target,
     supervised_tick,
 )
+from familymon.policy.personal_time import PersonalTimeWindow
 from familymon.storage.models import Base, Event
 
 AT = datetime(2026, 10, 19, 10, 0).astimezone()
@@ -73,7 +75,7 @@ LOCKED = SessionStatus(found=True, active=True, locked=True)
 NONE = SessionStatus(found=False, active=False, locked=False)
 
 
-async def _tick(sessions, status, outcome, *, gamelib=None):
+async def _tick(sessions, status, outcome, *, gamelib=None, personal_time=False):
     asked = []
 
     async def probe(suppress):
@@ -90,6 +92,7 @@ async def _tick(sessions, status, outcome, *, gamelib=None):
         phash_buf=PHashRingBuffer(),
         gamelib=gamelib,
         now=lambda: AT,
+        personal_time=personal_time,
     )
     return tick, asked, persistence
 
@@ -124,6 +127,54 @@ async def test_good_probe_is_persisted_with_roots_clock(sessions):
 async def test_locked_session_asks_the_probe_to_skip_the_screenshot(sessions):
     _, asked, _ = await _tick(sessions, LOCKED, ProbeOutcome(_result()))
     assert asked == ["session_locked"]
+
+
+@pytest.mark.asyncio
+async def test_personal_time_skips_the_screenshot_and_flags_the_row(sessions):
+    tick, asked, persistence = await _tick(
+        sessions, ACTIVE, ProbeOutcome(_result()), personal_time=True
+    )
+    assert tick.capture_id == 7 and asked == ["personal_time"]
+    assert persistence.write.call_args.kwargs["personal_time"] is True
+    assert _events(sessions) == []
+
+
+@pytest.mark.asyncio
+async def test_a_locked_session_in_personal_time_still_classifies_as_idle(sessions):
+    """The session reason wins: a locked screen must not be billed as the
+    game that was left open behind it."""
+    _, asked, persistence = await _tick(
+        sessions, LOCKED, ProbeOutcome(_result()), personal_time=True
+    )
+    assert asked == ["session_locked"]
+    assert persistence.write.call_args.kwargs["personal_time"] is True
+
+
+@pytest.mark.asyncio
+async def test_outside_personal_time_rows_are_not_flagged(sessions):
+    _, asked, persistence = await _tick(sessions, ACTIVE, ProbeOutcome(_result()))
+    assert asked == [None] and persistence.write.call_args.kwargs["personal_time"] is False
+
+
+def test_gate_reports_the_window_only_while_it_is_active():
+    window = PersonalTimeWindow(datetime(2026, 10, 19, 20, 0), datetime(2026, 10, 19, 22, 0), True)
+    gate = PersonalTimeGate(lambda now: window)
+    assert gate.check(datetime(2026, 10, 19, 19, 59)) is None
+    assert gate.check(datetime(2026, 10, 19, 20, 0)) is window
+    assert gate.check(datetime(2026, 10, 19, 22, 0)) is None
+    assert PersonalTimeGate(lambda now: None).check(datetime(2026, 10, 19, 21, 0)) is None
+
+
+def test_gate_treats_an_unusable_policy_as_no_personal_time_and_warns_once(caplog):
+    def broken(now):
+        raise ValueError("personal_time.from must be a quoted time")
+
+    gate = PersonalTimeGate(broken)
+    with caplog.at_level("WARNING", logger="familymon.capture.supervisor"):
+        assert gate.check(datetime(2026, 10, 19, 21, 0)) is None
+        assert gate.check(datetime(2026, 10, 19, 21, 1)) is None
+    warnings = [r for r in caplog.records if "policy unusable" in r.getMessage()]
+    assert len(warnings) == 1 and "monitoring in full" in warnings[0].getMessage()
 
 
 @pytest.mark.asyncio

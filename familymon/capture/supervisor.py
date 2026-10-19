@@ -56,6 +56,7 @@ from familymon.capture.games import GameLibrary
 from familymon.capture.kwin_wayland import new_nonce, render_window_list_script
 from familymon.capture.persist import CapturePersistence
 from familymon.capture.session_state import SessionState, session_label
+from familymon.policy.personal_time import SKIP_REASON, PersonalTimeWindow
 from familymon.storage.models import Event
 
 logger = logging.getLogger(__name__)
@@ -190,6 +191,39 @@ async def run_probe(
 
 
 Probe = Callable[[str | None], Awaitable[ProbeOutcome]]
+WindowLookup = Callable[[datetime], PersonalTimeWindow | None]
+
+
+class PersonalTimeGate:
+    """Per tick: is this personal time (policy/personal_time.py)? The lookup
+    reads policy.yaml and grants.json, root-only files, so the kid cannot
+    widen the window. A policy that can't be read is logged once and counts
+    as no personal time: monitoring in full is the safe failure."""
+
+    def __init__(self, lookup: WindowLookup) -> None:
+        self._lookup = lookup
+        self._last_error: str | None = None
+        self._active = False
+
+    def check(self, now: datetime) -> PersonalTimeWindow | None:
+        try:
+            window = self._lookup(now)
+        except Exception as e:  # PolicyError, OSError, yaml errors
+            message = f"{type(e).__name__}: {e}"
+            if message != self._last_error:
+                logger.warning("personal time: policy unusable (%s); monitoring in full", message)
+                self._last_error = message
+            window = None
+        else:
+            self._last_error = None
+        active = window if window is not None and window.active(now) else None
+        if (active is not None) != self._active:
+            self._active = active is not None
+            if active is not None:
+                logger.info("personal time until %s: no screenshots", f"{active.end:%H:%M}")
+            else:
+                logger.info("personal time over: screenshots resume")
+        return active
 
 
 @dataclass(frozen=True)
@@ -214,13 +248,20 @@ async def supervised_tick(
     phash_buf: PHashRingBuffer,
     gamelib: GameLibrary | None,
     now: Callable[[], datetime] = lambda: datetime.now().astimezone(),
+    personal_time: bool = False,
 ) -> SupervisedTick:
-    """One root-side tick: session check, probe, verify, persist."""
+    """One root-side tick: session check, probe, verify, persist.
+
+    `personal_time`: the tick falls in the policy's personal-time window, so
+    no screenshot is taken (a locked or inactive session skips it anyway, and
+    that reason wins so the row still classifies as idle) and the row is
+    flagged for the dashboard to hide its details."""
     status = await session_state.status()
     if status.queried and not status.found:
         return SupervisedTick(None, skipped="no_session")
 
-    outcome = await probe(status.suppress_reason())
+    suppress = status.suppress_reason() or (SKIP_REASON if personal_time else None)
+    outcome = await probe(suppress)
     result = outcome.result
     session = session_label(status)
     at = now()
@@ -248,7 +289,11 @@ async def supervised_tick(
         game_running = any(gamelib.is_game(w.wm_class, w.pid) for w in windows)
 
     cap_id = persistence.write(
-        result, same_as_prev=phash_dup, phash=phash_hex, game_running=game_running
+        result,
+        same_as_prev=phash_dup,
+        phash=phash_hex,
+        game_running=game_running,
+        personal_time=personal_time,
     )
     return SupervisedTick(cap_id)
 
@@ -261,8 +306,10 @@ async def run_supervisor(
     interval: float = 60.0,
     load_gamelib: Callable[[], GameLibrary] | None = None,
     script_dir: Path = KWIN_SCRIPT_DIR,
+    personal_time: WindowLookup | None = None,
 ) -> None:
-    """The root loop. Runs until cancelled."""
+    """The root loop. Runs until cancelled. `personal_time` is consulted every
+    tick (policy changes and grants take effect within a minute)."""
     try:
         uid = pwd.getpwnam(user).pw_uid
     except KeyError:
@@ -275,6 +322,7 @@ async def run_supervisor(
     loop = asyncio.get_running_loop()
     gamelib: GameLibrary | None = None
     gamelib_at = float("-inf")
+    gate = PersonalTimeGate(personal_time) if personal_time is not None else None
 
     async def probe(suppress: str | None) -> ProbeOutcome:
         target = session_target(user)
@@ -298,6 +346,7 @@ async def run_supervisor(
                     logger.exception("game library scan failed; keeping the previous one")
                 gamelib_at = tick_start
             try:
+                paused = gate is not None and gate.check(datetime.now()) is not None
                 tick = await supervised_tick(
                     session_state=session_state,
                     probe=probe,
@@ -305,6 +354,7 @@ async def run_supervisor(
                     sessions=sessions,
                     phash_buf=phash_buf,
                     gamelib=gamelib,
+                    personal_time=paused,
                 )
                 if tick.error:
                     logger.warning("capture tick failed: %s", tick.error)

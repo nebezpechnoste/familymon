@@ -78,6 +78,17 @@ web_block:
   # lessons = disabled while a lesson is in progress, always, or off.
   block_private: lessons
 
+# Personal time: from `from` until the bedtime lock of that day (the end of
+# allowed_hours, widened by an active grant), or until an explicit `until`,
+# familymon takes no screenshots and the dashboard hides app names and window
+# titles. Categories are still shown and game time still counts, including
+# browser games. Per day like allowed_hours; a day set to `off` has none.
+# Times are quoted "HH:MM". Preview: `familymonctl personal-time`.
+personal_time:
+  default: {from: "20:00"}
+  saturday: {from: "21:00"}
+  sunday: {from: "21:00"}
+
 # Screenshot retention. Image files older than this many days are deleted
 # once a day by familymon-retention.timer (by the date of their day folder);
 # the capture rows, titles and classifications that make the timeline are

@@ -45,6 +45,7 @@ CLI entry point: `familymonctl = "familymon.cli:main"` (`pyproject.toml`). Every
 | `policy/timekpr_admin.py` | timekpr transport: reads over D-Bus, writes via `timekpra`. |
 | `policy/grants.py` | Date-bound one-off exceptions (`grants.json`). |
 | `policy/chargeback.py` | Browser-game minutes charged to PlayTime. |
+| `policy/personal_time.py` | The parent's evening window: parses `personal_time`, computes today's window from `allowed_hours` and the active grants (`current_window`). The supervisor flags captures taken inside it; the dashboard masks them. |
 | `policy/webblock.py` | Chrome managed policy, forbidden-process sweep. |
 | `policy/crx.py` | Chrome extension CRX3 build, signing, update manifest. |
 | `dashboard/app.py`, `templates/timeline.html` | Read-only FastAPI timeline behind HTTP Basic auth. |

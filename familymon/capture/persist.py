@@ -39,6 +39,7 @@ class CapturePersistence:
         same_as_prev: bool,
         phash: str | None,
         game_running: bool = False,
+        personal_time: bool = False,
     ) -> int:
         active = result.active_window
         row = CaptureRow(
@@ -54,6 +55,7 @@ class CapturePersistence:
             messaging_present=result.messaging_present,
             screenshot_redacted=result.screenshot_redacted,
             game_running=game_running,
+            personal_time=personal_time,
             same_as_prev=same_as_prev,
         )
 

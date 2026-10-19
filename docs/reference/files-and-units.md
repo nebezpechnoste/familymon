@@ -44,6 +44,7 @@ Root only (0600, owner root):
 | `playtime_charges.json` | `enforce chargeback` | `{user: {day, last_capture_id, charged_seconds_today}}`. `charged_seconds_today` resets on a new day; the `last_capture_id` watermark is kept across days, but is reset for today if it is above the DB's newest capture id (DB replaced, recovered or migrated) |
 | `notified.json` | `schedule notify-tick` | `{"<ISO date>": ["HH:MM\|subject", ...]}`; overwritten with only today's key; makes block-start notifications fire at most once per day. An entry is written only when the notification was delivered |
 | `warned.json` | `schedule notify-tick` | `{"<key>": "<ISO timestamp>"}`; entries from other days pruned; drives the live-warning cooldown. Written only when the warning was delivered |
+| `personal_time_notified.json` | `schedule notify-tick` | `{"day": "<ISO date>", "until": "<ISO timestamp>"}`; the day the personal-time notice was delivered, so it fires once a day. Written only when delivered |
 | `known_games.json` | capture supervisor, `enforce games --forget` | game directories seen installed, so hiding a game's files does not remove its PlayTime mask. List with `enforce games` |
 
 Migration leftovers (root-only): `migrated/<user>-<YYYYmmdd-HHMMSS>/` (the old per-user state directory, kept as a backup by `migrate-state`) and the marker `.migrated-from-<user>`.
@@ -52,7 +53,7 @@ Runtime (not in the state dir): `/run/familymon/kwin/` (root, 0711, created by t
 
 A screenshot is saved only when image bytes exist and the capture is not `same_as_prev`. Screenshots are skipped for suspended sessions, for messaging windows that could not be redacted, and when the KWin window list did not arrive (see section 4.1).
 
-**No retention exists.** No code prunes `capture`, `classification` or `event` rows or screenshot files. Disk use grows until the parent cleans up manually. `familymonctl health` reports PNG count and size. Parent decides retention; if you delete screenshots, leave the DB rows (the DB stores paths only, and the dashboard reports `screenshot_on_disk` as a boolean).
+**Retention.** Screenshot files older than `retention.screenshots_days` (default 90) are deleted once a day by `familymon-retention.timer`, which also clears the rows' `screenshot_path`. No code prunes `capture`, `classification` or `event` rows; they are about a kilobyte each. `familymonctl health` reports PNG count and size. If you delete screenshots by hand, leave the DB rows (the DB stores paths only, and the dashboard reports `screenshot_on_disk` as a boolean).
 
 `enforce chargeback` and `familymonctl events` open the DB strictly read-only (`mode=ro`); the dashboard does the same through its group access. `enforce web-block` reads `schedule.yaml` from this directory (unless `--schedule FILE` is given).
 
@@ -175,7 +176,7 @@ dpkg-query -W -f='${Version}\n' familymon
 
 `familymon-dashboard.service` runs as the unprivileged `familymon` user with `FAMILYMON_STATE_DIR=/var/lib/familymon`. It opens the DB read-only and reads the schedule through group access (it never reads screenshot files); it cannot read `policy.yaml` or anything else root-only. It needs `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS` from `/etc/familymon/dashboard.env` (root:root 0600, read by systemd before privileges drop). Auth is HTTP Basic with no TLS; the only exposure control is the bind address (default `127.0.0.1`). Routes: `GET /`, `GET /d/{YYYY-MM-DD}`, `GET /api/captures?day=`, `GET /api/stats?day=`. It serves metadata only, never image bytes.
 
-The status banner reads the newest `heartbeat` event (falling back to plain capture freshness when there is none): OK, stale, "Capture DOWN" (with "while the session is <state>" when known), "Not logged in" (`idle`), "Heartbeat watcher not running" (newest heartbeat older than 5 minutes), or no captures yet. A red line under it appears when the day has `capture_failed` or `capture_tamper` events: "N capture(s) failed while the session was open; M forged window-list attempt(s) rejected", pointing at `sudo familymonctl events --day YYYY-MM-DD`.
+The status banner reads the newest `heartbeat` event (falling back to plain capture freshness when there is none): OK, stale, "Capture DOWN" (with "while the session is <state>" when known), "Not logged in" (`idle`), "Heartbeat watcher not running" (newest heartbeat older than 5 minutes), or no captures yet. A red line under it appears when the day has `capture_failed` or `capture_tamper` events: "N capture(s) failed while the session was open; M forged window-list attempt(s) rejected", pointing at `sudo familymonctl events --day YYYY-MM-DD`. Captures flagged `personal_time` keep their category pill, show a grey "personal time" tag instead of the app, and carry no title; a note above the timeline gives the span ("Personal time 20:00–21:59: no screenshots; app names and titles hidden").
 
 ## 4. Database schema
 
@@ -198,6 +199,7 @@ Engine: SQLAlchemy over SQLite (`familymon/storage/models.py`), tables created w
 | `messaging_present` | bool | a non-minimized messaging window was visible |
 | `screenshot_redacted` | bool | the saved PNG had messaging windows blacked out |
 | `game_running` | bool | installed game process detected (Steam library plus curated list) |
+| `personal_time` | bool | captured inside the policy's `personal_time` window: no screenshot was taken, and the dashboard and API hide the app, title, evidence and skip reason (the category is kept) |
 | `same_as_prev` | bool | the screenshot is a perceptual-hash duplicate of a recent one and was not saved |
 
 `screenshot_skipped_reason` values: `session_inactive`, `session_locked` (logind says the graphical session is not active or is locked), `messaging_app` (redaction could not be done safely, so no screenshot was kept), `window_list_unavailable` (the KWin window list did not arrive, so no screenshot was taken; redaction needs the geometry), or NULL. Window metadata is still recorded on skipped ticks. Session detection is fail-open: if logind cannot be queried, capture continues.
@@ -238,7 +240,7 @@ Parent decides: the priority rule is policy. Do not reorder it on the strength o
 
 ### 4.4 Migration
 
-At open, missing columns are added with `ALTER TABLE` (idempotent): `capture.messaging_present`, `capture.screenshot_redacted`, `capture.game_running`, `classification.present_categories`. No other migration mechanism exists.
+At open, missing columns are added with `ALTER TABLE` (idempotent): `capture.messaging_present`, `capture.screenshot_redacted`, `capture.game_running`, `capture.personal_time`, `classification.present_categories`. No other migration mechanism exists.
 
 ### 4.5 Permissions, integrity and self-recovery
 

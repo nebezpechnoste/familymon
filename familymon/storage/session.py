@@ -19,6 +19,7 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
         "messaging_present": "BOOLEAN DEFAULT 0",
         "screenshot_redacted": "BOOLEAN DEFAULT 0",
         "game_running": "BOOLEAN DEFAULT 0",
+        "personal_time": "BOOLEAN DEFAULT 0",
     },
     "classification": {
         # JSON stored as TEXT in SQLite; SQLAlchemy's JSON type deserializes it.

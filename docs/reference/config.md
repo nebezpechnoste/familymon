@@ -93,6 +93,7 @@ Not conffiles:
 | `policy.yaml`: `games.charge_browser_games`, `games.charge_browser_games_when` | Next chargeback tick (`familymon-chargeback.timer`: `OnActiveSec=3min`, `OnUnitActiveSec=5min`). No `enforce apply`. |
 | `policy.yaml`: `web_block.*` | Next `familymon-webblock.timer` tick (every minute). No `enforce apply`. |
 | `policy.yaml`: `retention.screenshots_days` | Next run of `familymon-retention.timer` (daily, 03:00 plus up to 1 h; catches up after boot). Preview: `sudo familymonctl retention --dry-run`. No `enforce apply`. |
+| `policy.yaml`: `personal_time` | Live: the capture supervisor and the notify tick re-read it every minute, with the active grants. Preview: `sudo familymonctl personal-time`. No `enforce apply`. |
 | `schedule.yaml` | Live. Every consumer re-reads it each run (notify-tick every minute, web-block every minute, `classify` every 5 minutes, dashboard per request). The capture loop does not read it. |
 | `schedule_extras.yaml` | Not live. Run `sudo familymonctl schedule refresh` (or `schedule import`). |
 | `messaging_apps.yaml` | Next tick: every capture probe is a new process and loads the list when it starts. |
@@ -124,6 +125,7 @@ Loading:
 | `games` | mapping | Optional (`null` becomes `{}`). Non-mapping raises. See 3.5. | PlayTime (game time) enforcement and browser-game chargeback. | `enforce apply`, `enforce chargeback` |
 | `web_block` | mapping | Optional. Absent means disabled. See 3.6. | Lesson-time web blocking. | `enforce web-block` |
 | `retention` | mapping | Optional. `screenshots_days`: whole number, absent = 90, `0` = keep forever. See 3.9. | Screenshot retention. | `retention` |
+| `personal_time` | per-day map of `{from, until}` | Optional. Absent or `off` = none. See 3.10. | Evening window with no screenshots and no titles on the dashboard; game time still counts. | capture supervisor, dashboard, `schedule notify-tick` |
 
 Parent decides: `lockout`, hours, limits, which categories to block. Safety: `terminate`, `kill` and `shutdown` end the session abruptly.
 
@@ -234,6 +236,19 @@ One-off extensions: use grants (`familymonctl enforce grant ...`), never raw `ti
 | `screenshots_days` | whole number | 90 | Screenshot files in day directories dated older than this are deleted once a day by `familymon-retention.timer`; `0` keeps them forever. Capture rows and classifications are not affected; their `screenshot_path` is cleared. |
 
 Preview with `sudo familymonctl retention --dry-run`. The job reads the key on every run; no `enforce apply`.
+
+### 3.10 `personal_time`
+
+Per-day map (3.2) of `{from: "HH:MM"}` or `{from: "HH:MM", until: "HH:MM"}`; a day set to `off` has none. A bare `{from: "20:00"}` applies to every day. Absent or `off` disables it. Times must be quoted strings.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `from` | `"HH:MM"` | required | Start of personal time on that day. |
+| `until` | `"HH:MM"` | the bedtime lock | End, exclusive. Default: the minute after the day's last allowed hour (`allowed_hours`, widened by any active grant from `enforce grant --until`), so allowed through 21:59 means 22:00. Must be after `from`. A `from` at or after the end means no personal time that day. |
+
+While the window is in effect, every tick: the probe takes no screenshot (skip reason `personal_time`; a locked or inactive session keeps its own reason and still classifies as `idle`), window class and title are recorded as usual, and the capture row is flagged `personal_time`. The classifier and `enforce chargeback` treat the row like any other, so browser-game minutes keep counting. The dashboard and `/api/captures` return the category and the time span but `null` for app, title, evidence and skip reason, and tag the span "personal time"; `/api/stats` counts the categories normally. `familymonctl personal-time` shows the day's window and the hidden counts. The kid gets one desktop notice per day while the window is in effect (`schedule notify-tick`).
+
+Live: the capture supervisor and the notify tick re-read the key every minute. No `enforce apply`. An unusable section is logged by the supervisor (`personal time: policy unusable`), reported by `personal-time`, and monitoring continues in full. Not masked: `familymonctl conflicts` and the live lesson warning. The window is meant for the evening, after lessons.
 
 ## 4. `schedule.yaml`
 

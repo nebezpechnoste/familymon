@@ -41,6 +41,11 @@ class Capture(Base):
     screenshot_redacted: Mapped[bool] = mapped_column(Boolean, default=False)
     # A visible window belongs to an installed game (trusted detection).
     game_running: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Captured inside the parent's personal-time window (policy
+    # `personal_time`): no screenshot was taken, and the dashboard shows the
+    # period as one block without titles or categories. Classification and
+    # game-time charging still run on the row.
+    personal_time: Mapped[bool] = mapped_column(Boolean, default=False)
 
     same_as_prev: Mapped[bool] = mapped_column(Boolean, default=False)
 

@@ -204,6 +204,7 @@ Live warnings (`schedule notify-tick`) apply the same rules to the lesson in pro
 - Window class, title, pid, executable path, geometry and state for every window, each tick, including whether it is on the virtual desktop and activity being shown. A window on another desktop, like a minimized one, is treated as not on screen: it is neither redacted nor counted by the classifier.
 - A screenshot per tick when visually novel, stored as a PNG under `/var/lib/familymon/screenshots` (root-only: directories 0700, files 0600; the dashboard shows whether a screenshot exists, never the image). The DB stores only the file path. The DB is root-owned and group-readable by `familymon`; the state directory itself is root:`familymon` 0750, so the kid cannot open any of it.
 - Classification, events (heartbeat, DB recovery, grants, chargebacks, web blocks, lesson closes, `capture_failed`, `capture_tamper`, `screenshots_pruned`).
+- During the parent's personal-time window (`personal_time` in `policy.yaml`, typically from an evening hour until the bedtime lock) no screenshot is taken. Window class and title are still recorded, because they drive classification and game-time billing, but the dashboard and API show only the category and duration for that period.
 - Everything stays on the laptop. The dashboard binds to `127.0.0.1` by default, requires HTTP Basic credentials from `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS`, and refuses to start without them.
 
 ### 8.2 Messaging redaction

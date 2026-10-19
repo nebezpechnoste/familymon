@@ -397,6 +397,41 @@ def _event(sessions: sessionmaker, kind: str, data: dict, at: datetime | None = 
         s.commit()
 
 
+def test_personal_time_keeps_the_category_and_hides_the_details(sessions: sessionmaker):
+    """Policy `personal_time`: the parent sees that it was games or video and
+    for how long, never which app or which title. Page and API alike."""
+    at = datetime.now().replace(hour=20, minute=0, second=0, microsecond=0)
+    _seed(sessions, at - timedelta(hours=1), category="video",
+          active_wm_class="firefox_firefox", active_title="Lecture 3 - YouTube")
+    for i, (cat, title) in enumerate([
+        ("games", "Hungry Shark - Poki"), ("games", "Hungry Shark - Poki"),
+        ("video", "Secret Movie - YouTube"),
+    ]):
+        _seed(sessions, at + timedelta(minutes=i), category=cat,
+              active_wm_class="google-chrome_google-chrome", active_title=title,
+              screenshot_skipped_reason="personal_time", personal_time=True)
+    c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
+    r = c.get("/", auth=(_USER, _PASS))
+    assert r.status_code == 200
+    assert "Poki" not in r.text and "Secret Movie" not in r.text
+    assert "google-chrome" not in r.text and "personal_time" not in r.text.split("<body>")[1]
+    assert "Lecture 3 - YouTube" in r.text          # before the window: shown as usual
+    assert r.text.count("pt-tag\">personal time") == 2  # one games block, one video block
+    assert "Personal time 20:00–20:02" in r.text and "no screenshots" in r.text
+    assert "games · 2m" in r.text and "video · 2m" in r.text  # categories still add up
+
+    rows = c.get("/api/captures", auth=(_USER, _PASS)).json()
+    hidden = [x for x in rows if x["personal_time"]]
+    assert len(hidden) == 3
+    assert {x["category"] for x in hidden} == {"games", "video"}
+    assert all(x["active_title"] is None and x["active_wm_class"] is None
+               and x["evidence"] is None and x["screenshot_skipped_reason"] is None
+               for x in hidden)
+    assert [x for x in rows if not x["personal_time"]][0]["active_title"] == "Lecture 3 - YouTube"
+    stats = c.get("/api/stats", auth=(_USER, _PASS)).json()["seconds_per_category"]
+    assert stats["games"] == 120.0 and "personal_time" not in stats
+
+
 def test_banner_shows_not_logged_in_from_the_watcher(sessions: sessionmaker):
     """The root watcher knows nobody is logged in; a quiet timeline then is
     not 'Capture DOWN'."""

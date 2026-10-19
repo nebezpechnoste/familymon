@@ -322,6 +322,73 @@ def retention_cmd(dry_run: bool, days: int | None) -> None:
         click.echo(f"{'would clear' if dry_run else 'cleared'} the screenshot path on {r.rows} capture row(s)")
 
 
+def _personal_time_window(now):
+    """Today's personal-time window from policy.yaml and the active grants,
+    or None. Raises on an unusable policy (PolicyError, OSError, YAML)."""
+    from familymon.config import policy_path, state_dir
+    from familymon.policy.personal_time import current_window
+
+    path = policy_path()
+    if not path.exists():
+        return None
+    return current_window(now, policy_path=path, grants_path=state_dir() / "grants.json")
+
+
+@main.command("personal-time")
+@click.option("--day", default=None,
+              help="Day YYYY-MM-DD to count hidden captures for (default: today).")
+def personal_time_cmd(day: str | None) -> None:
+    """Show today's personal-time window (policy.yaml `personal_time`) and
+    what it covered: captures taken without a screenshot whose app and title
+    the dashboard hides, and the game minutes among them. Read-only."""
+    from datetime import date, datetime, time, timedelta
+
+    from sqlalchemy import func, select
+
+    from familymon.config import capture_interval_seconds, db_path
+    from familymon.storage.models import Capture, Classification
+    from familymon.storage.session import make_readonly_engine, make_session_factory
+
+    now = datetime.now()
+    try:
+        window = _personal_time_window(now)
+    except Exception as e:
+        raise click.ClickException(f"personal_time in policy.yaml is unusable: {e}") from None
+    if window is None:
+        click.echo("personal time today: none")
+    else:
+        click.echo(f"personal time today: {window.label()}")
+        if window.active(now):
+            click.echo(
+                f"now {now:%H:%M}: in personal time (no screenshots; the dashboard hides "
+                "app names and titles; categories and game time still count)"
+            )
+        else:
+            click.echo(f"now {now:%H:%M}: outside personal time (full capture)")
+
+    if not db_path().exists():
+        return
+    target = date.fromisoformat(day) if day else now.date()
+    start = datetime.combine(target, time.min)
+    in_window = (
+        Capture.personal_time.is_(True),
+        Capture.captured_at >= start,
+        Capture.captured_at < start + timedelta(days=1),
+    )
+    with make_session_factory(make_readonly_engine(db_path()))() as s:
+        total = s.scalar(select(func.count()).where(*in_window)) or 0
+        games = s.scalar(
+            select(func.count())
+            .select_from(Capture)
+            .join(Classification, Classification.capture_id == Capture.id)
+            .where(*in_window, Classification.category == "games")
+        ) or 0
+    minutes = games * capture_interval_seconds() / 60
+    click.echo(
+        f"hidden captures on {target}: {total} (games: {games}, about {minutes:.0f} min)"
+    )
+
+
 @main.command("events")
 @click.option("--day", default=None, help="Day YYYY-MM-DD (default: today).")
 @click.option("--kind", "kinds", multiple=True,
@@ -494,10 +561,11 @@ def schedule_notify_tick(test_: bool, no_warn: bool, warn_cooldown: int | None) 
 
     from familymon.policy.schedule import Schedule
 
+    now = datetime.now()
+    _notify_personal_time(now, send)
     path = schedule_path()
     if not path.exists():
         return
-    now = datetime.now()
     schedule = Schedule.load(path)
     _notify_block_starts(schedule, now, send)
     if not no_warn:
@@ -522,6 +590,40 @@ def _session_notifier():
     except LookupError as e:
         raise click.ClickException(str(e)) from None
     return lambda summary, body, **kw: notify.send_as(user, summary, body, **kw)
+
+
+def _notify_personal_time(now, send) -> int:
+    """Once a day, when personal time is in effect: tell the kid. Disclosed
+    monitoring includes saying when it eases. Marked only when delivered, so
+    a kid who logs in later in the window still gets it."""
+    import json
+
+    from familymon.config import state_dir
+
+    try:
+        window = _personal_time_window(now)
+    except Exception:
+        return 0  # an unusable policy is reported by `personal-time` and the capture log
+    if window is None or not window.active(now):
+        return 0
+    mark = state_dir() / "personal_time_notified.json"
+    try:
+        seen = json.loads(mark.read_text())
+    except (OSError, ValueError):
+        seen = {}
+    today = now.date().isoformat()
+    if isinstance(seen, dict) and seen.get("day") == today:
+        return 0
+    body = (
+        f"Until {window.end:%H:%M} familymon takes no screenshots, and the dashboard "
+        "hides app names and window titles. Categories and game time still count."
+    )
+    if not send("Personal time", body, icon="user-away"):
+        return 0
+    mark.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    mark.write_text(json.dumps({"day": today, "until": window.end.isoformat()}))
+    click.echo("notified: personal time")
+    return 1
 
 
 def _notify_block_starts(schedule, now, send) -> int:
@@ -1344,6 +1446,7 @@ async def _capture_supervise() -> None:
         sessions=sessions,
         interval=capture_interval_seconds(),
         load_gamelib=lambda: _game_library(user),
+        personal_time=_personal_time_window,
     )
 
 

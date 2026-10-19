@@ -16,7 +16,7 @@ Conventions: monitored account `kid`, parent "the parent", laptop `kid-laptop`, 
 
 | What | File | Who writes it | How a change takes effect |
 |---|---|---|---|
-| Time, game and web-block policy | `policy.yaml` in the state dir. Root run: `/var/lib/familymon/policy.yaml`. Template: `/usr/share/familymon/policy_example.yaml` | root | `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks`: `familymonctl enforce apply` (or the hourly `familymon-enforce.timer`). `games.charge_browser_games*`: next `familymon-chargeback.timer` tick. `web_block.*`: next `familymon-webblock.timer` tick (every minute) |
+| Time, game and web-block policy | `policy.yaml` in the state dir. Root run: `/var/lib/familymon/policy.yaml`. Template: `/usr/share/familymon/policy_example.yaml` | root | `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks`: `familymonctl enforce apply` (or the hourly `familymon-enforce.timer`). `games.charge_browser_games*`: next `familymon-chargeback.timer` tick. `web_block.*`: next `familymon-webblock.timer` tick (every minute). `personal_time`: live, the capture supervisor and the notify tick re-read it every minute |
 | Weekly lesson schedule | `/var/lib/familymon/schedule.yaml` | root (`sudo familymonctl schedule import` or `refresh`) or a hand-written file | Read live by every consumer. No restart |
 | Parent extras for the schedule | `/etc/familymon/schedule_extras.yaml` (dpkg conffile) | root | Only when `familymonctl schedule refresh` (or `schedule import`) is run (as root). Edits alone are not picked up |
 | Redaction list | `/etc/familymon/messaging_apps.yaml` | root | Next tick: every capture probe is a new process and loads the list when it starts |
@@ -52,6 +52,7 @@ Ask these before editing. Skip any the parent has already answered. Record the a
 | 12 | Private browsing (incognito, guest): off during lessons only, always, or not blocked? | `web_block.block_private` |
 | 13 | Holidays and breaks in the next term: dates and whether only lessons are suspended. | `breaks` in extras |
 | 14 | Confirm the kid knows monitoring is on. | Disclosed monitoring only. Do not proceed to hidden setups |
+| 15 | Is there an evening hour after which the parent does not want to see what the kid watches (no screenshots, no titles), while game time still counts? | `personal_time` (example 14) |
 
 Ask about **whole-hour limits** explicitly. `allowed_hours` works in whole hours: `{start: 7, end: 21}` allows 07:00 to 21:59. A bedtime of 21:30 cannot be expressed in `policy.yaml`. Offer 21:00 (`end: 20`) or 22:00 (`end: 21`) and let the parent choose. One-off partial-hour extensions are possible with `enforce grant --until`.
 
@@ -82,6 +83,7 @@ Ask about **whole-hour limits** explicitly. `allowed_hours` works in whole hours
 | One-off later bedtime tonight | grants | `enforce grant kid --until HH:MM` | `enforce grants`, `enforce show kid` after | yes |
 | Extra game minutes today | grants | `enforce grant kid --playtime 20m` | none (see example 9) | yes |
 | Warn but do not block | `policy.yaml` | leave the category out of `web_block.categories` (live warnings still fire) | `enforce web-block --dry-run` | yes |
+| Evening privacy: no screenshots or titles after a given hour, game time still counts | `policy.yaml` | `personal_time.<default\|monday..sunday>.{from, until}` | `personal-time` | yes |
 | Show the parent what happened | CLI | `sudo familymonctl conflicts [--day YYYY-MM-DD]` (reads the schedule and capture DB in `/var/lib/familymon`), dashboard | read-only | no |
 
 Not configurable: the always-allowed hosts `meet.google.com`, `teams.microsoft.com`, `zoom.us`. If the parent asks to change them, say it is not possible in the current code.
@@ -381,6 +383,22 @@ web_block:
 `allow_domains` removes the host from the block set. `forbid_apps` entries are masks wrapped as `.*mask.*` and fully matched (case-insensitive) against the process's `exe` plus command line. They must compile as regex, and may not contain `;` or nested `[]`. `block_private: always` sets Chrome's incognito and guest policies at all times, not only during lessons.
 
 Preview: `sudo familymonctl enforce web-block --dry-run`. Check the allow host is absent from the block set, the app is listed under "forbidden apps running now", and `private windows (incognito/guest): always`. Verify as in example 3. Caution: a broad mask can close unrelated processes, so show the parent the matches from the dry-run before applying.
+
+### Example 14: Personal time in the evening
+
+Parent: "After 20:00 I don't want to see what they watch, but game time must still count."
+
+```yaml
+# policy.yaml
+personal_time:
+  default: {from: "20:00"}
+  saturday: {from: "21:00"}
+  sunday: {from: "21:00"}
+```
+
+From `from` until that day's bedtime lock (the end of `allowed_hours`, plus any grant made with `enforce grant --until`), the capture takes no screenshots, and the dashboard shows only categories and durations for the period: no app names, no titles. Classification and the browser-game chargeback keep running on those captures, so the game budget behaves exactly as before. Add `until: "21:00"` to end it before bedtime. Lesson blocking and warnings are unaffected; the window is meant for after lessons.
+
+Preview: `sudo familymonctl personal-time` prints the window and whether it is in effect now; an unusable section is reported there, and monitoring continues in full. Verify the next evening with the checks in [verify-and-health.md](verify-and-health.md) ("Personal time"): the note and grey tags on the dashboard, the hidden-capture count, and the kid's one "Personal time" notification. Undo: remove the section; the supervisor picks that up within a minute. Tell the parent plainly: window titles are still recorded in the root-only database because they drive classification; what changes is that no screenshots exist for the period and that the dashboard and API do not show the details.
 
 ## 5. Rules for the agent
 
