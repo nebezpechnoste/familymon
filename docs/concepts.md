@@ -6,10 +6,10 @@ Placeholders used across these docs: the monitored account is `kid`, the laptop 
 
 ## 1. The idea: monitor and react
 
-familymon is local-first monitoring plus enforcement for a Linux/KDE (Wayland) laptop. It has two halves.
+Familymon is local-first monitoring plus enforcement for a Linux/KDE (Wayland) laptop. It has two halves.
 
 - **Monitor (reactive, logged).** A root supervisor follows the kid's graphical session, records which windows are open, takes a screenshot with messaging windows blacked out, and classifies each sample into one category. Nothing leaves the machine. The parent reads the result in a local dashboard or CLI.
-- **Enforce (preventive).** Time and per-app limits are delegated to timekpr-next. Web blocking during lessons is delegated to Chrome managed policy, a force-installed extension and a process sweep. familymon only computes the desired state and pushes it; it does not build its own session or time enforcement.
+- **Enforce (preventive).** Time and per-app limits are delegated to timekpr-next. Web blocking during lessons is delegated to Chrome managed policy, a force-installed extension and a process sweep. Familymon only computes the desired state and pushes it; it does not build its own session or time enforcement.
 
 The two halves connect through the schedule: the schedule says when a lesson is in progress, and the lesson is what turns "the kid has a game open" from a log line into a conflict, a warning or a block.
 
@@ -163,7 +163,7 @@ Ordering inside the web-block tick: the Chrome policy file is reconciled, then t
 
 Points to keep straight:
 
-- timekpr is the only time and app enforcer. familymon computes desired state and diffs it against live state; it never reimplements limits.
+- timekpr is the only time and app enforcer. Familymon computes desired state and diffs it against live state; it never reimplements limits.
 - `video` is not in the default web-block categories. Streaming during a lesson is flagged and warned about, not blocked. Parent decides whether to add `video` to `web_block.categories`.
 - `meet.google.com`, `teams.microsoft.com` and `zoom.us` are never blocked.
 - The extension does not run in private windows. That is why `block_private` exists (`lessons`, `always` or `off`).
@@ -176,7 +176,7 @@ Points to keep straight:
 - **Safety:** changing allowed hours so the current hour is excluded while the kid is logged in would end the session. `enforce apply` refuses (exit 3) unless `--force`, if a session exists and either today's window excludes now or today's limit would shrink. Window changes are applied last in the plan for that reason.
 - One-off extensions use date-bound grants (`enforce grant`), never raw `timekpra --setallowedhours`. Raw changes are persistent and the hourly reconciler reverts them. Grants only widen today's hours and expire on their own.
 - The `timekpra --getuserinfo` command prints enabled booleans as `False` (a CLI bug in the version in use), so familymon reads via D-Bus.
-- timekpr PlayTime does nothing until the global PlayTime switches in `/etc/timekpr/timekpr.conf` (including the enhanced activity monitor) are enabled. Per-user settings are silently masked until then. familymon does not edit that file; it is a manual prerequisite.
+- timekpr PlayTime does nothing until the global PlayTime switches in `/etc/timekpr/timekpr.conf` (including the enhanced activity monitor) are enabled. Per-user settings are silently masked until then. Familymon does not edit that file; it is a manual prerequisite.
 - PlayTime masks are effectively full-match against process path and command line. The driver wraps bare `games.extra_masks` entries as `.*mask.*`. Flatpak apps appear as their `bwrap` wrapper.
 - timekpr-next behaviour observed with 0.5.10 (not familymon code): timekpr applies a play-time-left change on its next poll (about 3 s), so read back after a few seconds; and suspend and lock lockouts are only enforced while the session is active.
 - After a package upgrade, long-running units may still run old code. The deb's postinst runs `daemon-reload`, then enables and restarts `familymon-capture.service` and `familymon-dashboard.service` and starts all seven timers; the timer-driven services pick up new code by themselves. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time.

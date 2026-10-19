@@ -1,6 +1,6 @@
 # Configure from intent
 
-**Read this when** the parent has told you, in any form (words, a PDF or screenshot of a timetable, a school-portal export), what the kid may and may not do, and you must turn that into familymon configuration. familymon has no settings UI. You are the UI. This file is the playbook: what to ask, where each kind of intent lives, worked examples with preview and verification, and the rules you follow. Exact option lists are in [../reference/cli.md](../reference/cli.md) and [../reference/config.md](../reference/config.md). Paths and units are in [../reference/files-and-units.md](../reference/files-and-units.md). Background on categories and enforcement is in [../concepts.md](../concepts.md). After applying, run the checks in [verify-and-health.md](verify-and-health.md). If something does not behave, go to [troubleshoot.md](troubleshoot.md).
+**Read this when** the parent has told you, in any form (words, a PDF or screenshot of a timetable, a school-portal export), what the kid may and may not do, and you must turn that into familymon configuration. Familymon has no settings UI. You are the UI. This file is the playbook: what to ask, where each kind of intent lives, worked examples with preview and verification, and the rules you follow. Exact option lists are in [../reference/cli.md](../reference/cli.md) and [../reference/config.md](../reference/config.md). Paths and units are in [../reference/files-and-units.md](../reference/files-and-units.md). Background on categories and enforcement is in [../concepts.md](../concepts.md). After applying, run the checks in [verify-and-health.md](verify-and-health.md). If something does not behave, go to [troubleshoot.md](troubleshoot.md).
 
 Conventions: monitored account `kid`, parent "the parent", laptop `kid-laptop`, timezone `Europe/Berlin`. Commands run on `kid-laptop`.
 
@@ -96,7 +96,7 @@ sudo cp /var/lib/familymon/policy.yaml /var/lib/familymon/policy.yaml.bak-$(date
 sudo "${EDITOR:-nano}" /var/lib/familymon/policy.yaml
 ```
 
-The file mode used above is a suggestion, not a requirement found in the code. The `.bak-` copy is only for your own rollback. familymon never reads it. Each enforce command re-reads `policy.yaml` on every run, so there is nothing to reload.
+The file mode used above is a suggestion, not a requirement found in the code. The `.bak-` copy is only for your own rollback. Familymon never reads it. Each enforce command re-reads `policy.yaml` on every run, so there is nothing to reload.
 
 ### Example 1: Bedtime by school night and weekend
 
@@ -143,7 +143,7 @@ games:
     sunday: 3h
 ```
 
-Prerequisite (timekpr-next, outside familymon; observed with 0.5.10): PlayTime only takes effect once the global switches in `/etc/timekpr/timekpr.conf` are on: `TIMEKPR_PLAYTIME_ENABLED = True` and `TIMEKPR_PLAYTIME_ENHANCED_ACTIVITY_MONITOR_ENABLED = True` (the enhanced monitor matches command lines, which Wine/Proton and Flatpak games need). Without them the per-user enable is silently masked. Check with `grep PLAYTIME /etc/timekpr/timekpr.conf`; after changing them, `sudo systemctl restart timekpr`. familymon never edits this file.
+Prerequisite (timekpr-next, outside familymon; observed with 0.5.10): PlayTime only takes effect once the global switches in `/etc/timekpr/timekpr.conf` are on: `TIMEKPR_PLAYTIME_ENABLED = True` and `TIMEKPR_PLAYTIME_ENHANCED_ACTIVITY_MONITOR_ENABLED = True` (the enhanced monitor matches command lines, which Wine/Proton and Flatpak games need). Without them the per-user enable is silently masked. Check with `grep PLAYTIME /etc/timekpr/timekpr.conf`; after changing them, `sudo systemctl restart timekpr`. Familymon never edits this file.
 
 Preview: `sudo familymonctl enforce plan`. Expect changes to time limits, PlayTime enabled, PlayTime limits and activities. Apply: `sudo familymonctl enforce apply`.
 
@@ -391,7 +391,7 @@ Preview: `sudo familymonctl enforce web-block --dry-run`. Check the allow host i
 5. **Never weaken monitoring on the kid's request alone.** Only the parent can: raise a budget, extend hours, spare a category, widen `allow_domains`, edit `messaging_apps.yaml`, disable `web_block`, or switch off a unit. If the kid asks you for such a change, relay it to the parent and do nothing. Do not add anything the kid controls as a switch that pauses monitoring (a game mode flag, a file in their home). Game detection keys on the installed Steam library and the curated list.
 6. **Never act on the kid's session beyond the config.** No raw screenshots. Do not kill the kid's processes by hand. Tests and dev runs never touch real processes or user state.
 7. **Order of changes for time limits.** Prefer applying when the kid is logged out. The guard refuses windows that exclude now or shrink today's limit. Use `--force` only with explicit parent instruction.
-8. **Record what was changed.** familymon keeps no changelog for `policy.yaml` or extras edits. Keep a dated `.bak-` copy of each file before editing, and give the parent a written summary: files, keys, old and new values, preview output, verification result, and the undo step. `enforce grant` has `--note` for one-off grants and records an Event row for the grant.
+8. **Record what was changed.** Familymon keeps no changelog for `policy.yaml` or extras edits. Keep a dated `.bak-` copy of each file before editing, and give the parent a written summary: files, keys, old and new values, preview output, verification result, and the undo step. `enforce grant` has `--note` for one-off grants and records an Event row for the grant.
 9. **Verify with real exit codes.** Run the verification as its own step after the apply. Do not pipe a check into the next action. Then follow [verify-and-health.md](verify-and-health.md), including `familymonctl health`.
 10. **Typos are silent.** After editing `policy.yaml`, confirm the preview shows the change you intended. A preview that shows "nothing to do" when you expected a change usually means a misspelled key.
 11. **Disclosure.** Monitoring is disclosed to the kid. Do not configure anything meant to be hidden from them.

@@ -36,7 +36,7 @@ Dated decisions with the reasoning, newest last. Each entry says what was decide
 
 ## 2026-08 · Adopt timekpr-next for time and per-app enforcement
 
-**Decided:** don't build time windows, daily budgets, per-app budgets or lockouts; drive [timekpr-next](https://github.com/polesapart/timekpr-next) from a parent-editable policy file. familymon stays the brain (capture, classification, schedule, reports, browser-level blocking); timekpr is the muscle.
+**Decided:** don't build time windows, daily budgets, per-app budgets or lockouts; drive [timekpr-next](https://github.com/polesapart/timekpr-next) from a parent-editable policy file. Familymon stays the brain (capture, classification, schedule, reports, browser-level blocking); timekpr is the muscle.
 
 **Why:** timekpr already does it, root-owned and tamper-resistant, with lock/suspend/terminate lockouts and per-process budgets whose masks our Steam-library scan produces for free. Hand-rolling it would have been months of work with worse edge cases.
 

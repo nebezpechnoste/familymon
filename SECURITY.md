@@ -16,7 +16,7 @@ Two kinds of report are in scope:
    reporting, but it is lower priority.
 
 A monitored user with root or admin rights, or with physical access to
-firmware and boot settings, is out of scope. familymon assumes the child uses
+firmware and boot settings, is out of scope. Familymon assumes the child uses
 a standard account on a machine whose boot is locked down.
 
 Known, deliberate gaps are listed in the README. Please check there first.

@@ -6,7 +6,7 @@ What familymon is trying to do, for whom, and the rules that shape every decisio
 
 A parent wants to know what a child actually does on their laptop during the school day and after it, and wants limits that hold without standing behind the chair. Mainstream parental-control products don't support Linux, and the ones that exist elsewhere mostly block apps by name, which says nothing about a browser tab.
 
-familymon takes a **monitor-and-react** approach instead: record what is on screen every minute, classify the activity on the device, compare it with the school timetable, and act on that: a notification, a dashboard row, a blocked site during a lesson, a game budget that counts browser games too.
+Familymon takes a **monitor-and-react** approach instead: record what is on screen every minute, classify the activity on the device, compare it with the school timetable, and act on that: a notification, a dashboard row, a blocked site during a lesson, a game budget that counts browser games too.
 
 ## Who it is for
 
@@ -29,7 +29,7 @@ The parent is assumed to operate familymon through an AI agent (see [../../AGENT
 ## Non-goals
 
 - **Covert monitoring.** See above.
-- **Perfect enforcement.** A determined teenager with physical access can boot something else. familymon assumes a standard (non-admin) account, locked firmware and boot loader, and a parent who looks at the dashboard. The goal is that circumvention takes effort and leaves a trace, not that it is impossible.
+- **Perfect enforcement.** A determined teenager with physical access can boot something else. Familymon assumes a standard (non-admin) account, locked firmware and boot loader, and a parent who looks at the dashboard. The goal is that circumvention takes effort and leaves a trace, not that it is impossible.
 - **Reading the content of chats.** Messaging windows are redacted; their titles are recorded (the app and, for web chats, the page title), their content never.
 - **Replacing timekpr-next.** Time and per-app budgets are timekpr's job; familymon drives it and adds what it can't see.
 - **Windows, macOS, other desktops.** The capture is built on KWin (KDE Plasma 6, Wayland). Ports were considered and rejected along with commercialisation; see [../research/commercialization-2026-10.md](../research/commercialization-2026-10.md).

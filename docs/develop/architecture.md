@@ -2,7 +2,7 @@
 
 Read this when you need to change familymon's code, or need to know which component runs as which user, where data flows, and which invariants must not be broken. For commands see [../reference/cli.md](../reference/cli.md). For paths and units see [../reference/files-and-units.md](../reference/files-and-units.md). For terms see [../concepts.md](../concepts.md). For tests and releases see [testing-and-shipping.md](testing-and-shipping.md).
 
-familymon is local-first. All data stays on the monitored laptop (`kid-laptop`). Monitoring is disclosed. The parent decides policy.
+Familymon is local-first. All data stays on the monitored laptop (`kid-laptop`). Monitoring is disclosed. The parent decides policy.
 
 ## Package map
 

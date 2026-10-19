@@ -87,7 +87,7 @@ Escalating automatically (for example locking the session after N failed ticks) 
 - **Classification.** Application categories come only from system `.desktop` directories. The child's `~/.local/share/applications` is ignored, because it's a forgeable category source (`categorize/apps.py`).
 - **Chargeback.** If the DB is ever replaced (crash recovery, migration), the watermark resets for the day instead of hiding every new capture (`chargeback.rewound_watermark`).
 - **Dashboard.** It runs as `familymon` with `ProtectSystem=strict`, opens the DB read-only, and gets its credentials from `/etc/familymon/dashboard.env` (`root:root 0600`), which systemd reads before dropping privileges. Rotate the password after upgrading from a release where the file was readable by the child.
-- **System logs.** familymon logs to the journal. Membership of `adm` lets an account read all system logs. Removing the child from `adm` (`sudo gpasswd -d kid adm`) is recommended, and it's the parent's decision.
+- **System logs.** Familymon logs to the journal. Membership of `adm` lets an account read all system logs. Removing the child from `adm` (`sudo gpasswd -d kid adm`) is recommended, and it's the parent's decision.
 - **Desktop.** KDE Kiosk (`[$i]` immutable settings) can lock down parts of Plasma's UI. That's cosmetic hardening, not a security boundary, and familymon doesn't need it.
 
 ## Changing the code

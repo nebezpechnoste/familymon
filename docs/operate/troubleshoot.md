@@ -22,7 +22,7 @@ Read this when something looks wrong on a running familymon install: stale behav
 | Rows show `unknown` | [Captures shown as unknown](#captures-shown-as-unknown) |
 | Timers listed but never fire after late login | [Timers not armed](#timers-not-armed) |
 | `health` prints "DB was auto-recovered" or exits 4 | [DB was auto-recovered](#db-was-auto-recovered) |
-| familymon notifications do not pop up | [Notifications not popping up](#notifications-not-popping-up) |
+| Familymon notifications do not pop up | [Notifications not popping up](#notifications-not-popping-up) |
 | A game is not drawing down PlayTime | [PlayTime not counting a game](#playtime-not-counting-a-game) |
 | `timekpra --getuserinfo` shows enabled flags as False | [Booleans misreported by timekpra](#booleans-misreported-by-timekpra) |
 | An extension of allowed hours disappeared | [Grant reverted](#grant-reverted) |
@@ -304,9 +304,9 @@ grep -n 'PLAYTIME' /etc/timekpr/timekpr.conf
 
 Check, in order:
 
-1. **Global switches.** PlayTime is inert until the GLOBAL switches in `/etc/timekpr/timekpr.conf` are on: `TIMEKPR_PLAYTIME_ENABLED` and `TIMEKPR_PLAYTIME_ENHANCED_ACTIVITY_MONITOR_ENABLED`. Until then, per-user enable is silently masked. familymon never reads or writes `timekpr.conf`, so this is a manual prerequisite.
+1. **Global switches.** PlayTime is inert until the GLOBAL switches in `/etc/timekpr/timekpr.conf` are on: `TIMEKPR_PLAYTIME_ENABLED` and `TIMEKPR_PLAYTIME_ENHANCED_ACTIVITY_MONITOR_ENABLED`. Until then, per-user enable is silently masked. Familymon never reads or writes `timekpr.conf`, so this is a manual prerequisite.
 2. **`games.enabled: true`** in `policy.yaml`. When games are disabled, familymon writes PlayTime limits of 0 and no activities.
-3. **Masks.** timekpr PlayTime masks are effectively full-match against the process path and cmdline. Masks must look like `.*something.*`. familymon wraps bare `games.extra_masks` entries as `.*mask.*`. Steam game masks are generated from installed `appmanifest_*.acf` entries as `.*common.<installdir>.*`, covering native and Proton games.
+3. **Masks.** timekpr PlayTime masks are effectively full-match against the process path and cmdline. Masks must look like `.*something.*`. Familymon wraps bare `games.extra_masks` entries as `.*mask.*`. Steam game masks are generated from installed `appmanifest_*.acf` entries as `.*common.<installdir>.*`, covering native and Proton games.
 4. **Flatpak apps** appear as their `bwrap` wrapper, so a mask on the app name may not match. Use a mask that matches the wrapper's command line, and verify against a real process listing. The bundled `policy_example.yaml` shows this shape for a Flatpak Roblox client: `.*bwrap.*sober.*[Roblox]` (the bracketed part is the activity description).
 5. **Poll delay.** timekpr applies a play-time-left change on its next poll, about 3 s (timekpr-next behaviour, observed with 0.5.10; not defined in familymon's code). Read back after a few seconds.
 6. **Browser games** are invisible to timekpr. They are billed by `enforce chargeback`, which needs `games.enabled` and `games.charge_browser_games` in `policy.yaml`. Preview with:
@@ -344,7 +344,7 @@ familymonctl enforce show kid
 familymonctl enforce plan
 ```
 
-familymon reads via D-Bus and writes via `timekpra`. Do not "fix" a setting because the CLI shows False.
+Familymon reads via D-Bus and writes via `timekpra`. Do not "fix" a setting because the CLI shows False.
 
 ## Grant reverted
 

@@ -1,6 +1,6 @@
 # Contributing to familymon
 
-Thanks for your interest. familymon is a small project maintained in spare
+Thanks for your interest. Familymon is a small project maintained in spare
 time, so please open an issue to discuss anything bigger than a bug fix before
 you write code.
 

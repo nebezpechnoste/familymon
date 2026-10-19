@@ -2,11 +2,11 @@
 
 Parental-control software for a child's Linux laptop (KDE Plasma 6 on Wayland). It records what is on screen, classifies the activity on the device, compares it with the school timetable, and enforces time, game and lesson-time limits. Everything stays on the laptop.
 
-familymon has no settings UI. An AI agent acting for the parent (for example Claude Code) is the interface: the parent says what they want, in words or by pasting a timetable, and the agent turns that into configuration, previews it, applies it, verifies it and explains it back. If you are that agent, start at [`AGENTS.md`](AGENTS.md).
+Familymon has no settings UI. An AI agent acting for the parent (for example Claude Code) is the interface: the parent says what they want, in words or by pasting a timetable, and the agent turns that into configuration, previews it, applies it, verifies it and explains it back. If you are that agent, start at [`AGENTS.md`](AGENTS.md).
 
 ## Who it is for
 
-Parents supervising their own minor children, **openly**. The child knows the laptop is monitored and knows what is recorded. familymon is not for covert monitoring of anyone: not partners, not employees, not adults, not children who haven't been told. Monitoring another adult's device without their knowledge is abuse and, in most places, a crime. Changes that hide the monitoring from the monitored person will not be accepted. The goals and principles are in [docs/design/goals.md](docs/design/goals.md).
+Parents supervising their own minor children, **openly**. The child knows the laptop is monitored and knows what is recorded. Familymon is not for covert monitoring of anyone: not partners, not employees, not adults, not children who haven't been told. Monitoring another adult's device without their knowledge is abuse and, in most places, a crime. Changes that hide the monitoring from the monitored person will not be accepted. The goals and principles are in [docs/design/goals.md](docs/design/goals.md).
 
 ## What it does
 
@@ -37,7 +37,7 @@ What the host should do: encrypt the disk; keep swap off or encrypted, because s
 - A Linux laptop with systemd and KDE Plasma 6 on Wayland. The capture uses KWin's scripting interface and Spectacle. Developed and used on Ubuntu; shipped as a `.deb`.
 - Python 3.12 or newer (the package bundles its own environment).
 - timekpr-next for time and game enforcement; Google Chrome for lesson-time blocking.
-- The child uses a standard account without sudo, and the firmware and boot loader are password-protected. familymon does not defend against root or physical access.
+- The child uses a standard account without sudo, and the firmware and boot loader are password-protected. Familymon does not defend against root or physical access.
 
 ## Install and operate
 
@@ -57,7 +57,7 @@ Build the package on another machine (`scripts/build-deb.sh`), publish it to a f
 
 ## Status and known gaps
 
-familymon is in daily use in one household. Gaps, deliberate for now:
+Familymon is in daily use in one household. Gaps, deliberate for now:
 
 - Only Chrome is governed during lessons; other browsers are closed, not filtered. There is no DNS layer, so what non-browser apps do on the network is timekpr's business (process budgets), not familymon's.
 - The lesson rule flags known entertainment video and allows everything else. The planned inversion (allow only class platforms during lessons) is not built.

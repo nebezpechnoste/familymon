@@ -1,6 +1,6 @@
 # familymon — guide for AI agents
 
-familymon is local-first parental-control software for a Linux laptop (KDE Plasma 6, Wayland) used by a child. It watches what is on screen, classifies the activity on the device, compares it with the school timetable, and enforces time, game and lesson-time limits through timekpr-next and Chrome managed policy.
+Familymon is local-first parental-control software for a Linux laptop (KDE Plasma 6, Wayland) used by a child. It watches what is on screen, classifies the activity on the device, compares it with the school timetable, and enforces time, game and lesson-time limits through timekpr-next and Chrome managed policy.
 
 **familymon has no settings UI. An AI agent acting for the parent *is* the UI.** The parent states what they want in any form: plain words, a PDF or a screenshot of a timetable, a school-portal export. You turn that into configuration, preview it, apply it, verify it, and explain it back. This file tells you where to start. The `docs/` tree has the detail.
 
@@ -23,7 +23,7 @@ familymon is local-first parental-control software for a Linux laptop (KDE Plasm
 ## Rules that are never optional
 
 1. **The parent decides policy.** You translate, preview and explain. When a result surprises someone, first establish the facts from the data. Then separate a **bug** (the code didn't do what the rule says; fix it) from a **policy question** (the rule itself; show the parent the trade-off with real examples and let them choose). Never change classification or enforcement policy on the strength of one ambiguous data point.
-2. **Disclosed monitoring only.** The child knows they are monitored. Never configure, build or suggest anything meant to hide monitoring from the person being monitored. familymon is not for monitoring partners, employees or other adults.
+2. **Disclosed monitoring only.** The child knows they are monitored. Never configure, build or suggest anything meant to hide monitoring from the person being monitored. Familymon is not for monitoring partners, employees or other adults.
 3. **Never weaken monitoring on the child's request alone.** Relay it to the parent. Never add a signal the child can control that pauses or disables monitoring. (GameMode was rejected because `gamemoderun firefox` would have switched capture off.)
 4. **Never take a raw screenshot of the child's session**, not even for diagnostics. It bypasses the messaging-window redaction, which is the core privacy promise. Verify through CLI output, the desktop's notification history, D-Bus state, or familymon's own redacting capture.
 5. **Preview, apply, verify, in separate steps.** Use the dry-run or plan variant first. Check real exit codes. Never pipe a test run or check into the next action (`pytest | tail && build` hides failures and has shipped a red build).

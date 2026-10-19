@@ -176,7 +176,7 @@ Run in order. Details of how to read each result are in [verify-and-health.md](v
 3. `sudo familymonctl heartbeat-once`. Expect `heartbeat: ok` (or `heartbeat: idle` if the kid is not logged in).
 4. `sudo familymonctl classify`, then health again. `classified 24h` should rise.
 5. Failures: `sudo familymonctl events` should list no `capture_failed` or `capture_tamper` rows for today.
-6. Notifications: `sudo familymonctl schedule notify-tick --test` (prints "no session to notify" if the kid is not logged in). Safety: this pops a real notification on their screen, so warn them. Confirm via Plasma's notification history or D-Bus state, not a screenshot. Plasma may only show popups for apps with a desktop entry. familymon ships `/usr/share/applications/familymon.desktop` (`NoDisplay=true`) and sends the `desktop-entry` hint so they pop up.
+6. Notifications: `sudo familymonctl schedule notify-tick --test` (prints "no session to notify" if the kid is not logged in). Safety: this pops a real notification on their screen, so warn them. Confirm via Plasma's notification history or D-Bus state, not a screenshot. Plasma may only show popups for apps with a desktop entry. Familymon ships `/usr/share/applications/familymon.desktop` (`NoDisplay=true`) and sends the `desktop-entry` hint so they pop up.
 7. Enforcement: `sudo familymonctl enforce plan`, review, then `sudo familymonctl enforce apply`, then `sudo familymonctl enforce show kid` after a few seconds.
 
 Safety (screenshots): never take a raw screenshot of the monitored session for diagnostics. It bypasses messaging-window redaction.

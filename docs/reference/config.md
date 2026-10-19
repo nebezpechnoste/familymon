@@ -165,7 +165,7 @@ Notes:
 
 - Steam masks are generated at apply time from the kid's scanned Steam library as `.*common.<installdir>.*`. They are not configured in `policy.yaml`.
 - Chargeback bills only captures with `game_running` false and a browser-like window class, up to 1800 seconds per run. It reads the kid's capture DB strictly read-only.
-- timekpr prerequisite: PlayTime has no effect until the global PlayTime switches (including the enhanced activity monitor) are enabled in `/etc/timekpr/timekpr.conf`. familymon does not edit that file. See [troubleshoot](../operate/troubleshoot.md).
+- timekpr prerequisite: PlayTime has no effect until the global PlayTime switches (including the enhanced activity monitor) are enabled in `/etc/timekpr/timekpr.conf`. Familymon does not edit that file. See [troubleshoot](../operate/troubleshoot.md).
 
 ### 3.6 `web_block`
 
