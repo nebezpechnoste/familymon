@@ -65,6 +65,7 @@ Safety: a non-root run uses `~/.local/state/familymon`, which is a separate DB f
 | `capture-probe` (hidden, internal) | TOUCHES-PROCESSES | no | none |
 | [`migrate-state`](#migrate-state) | WRITES-STATE | yes (refuses otherwise) | none (idempotent) |
 | [`events`](#events) | READ-ONLY | yes in practice | itself |
+| [`retention`](#retention) | WRITES-STATE (deletes files) | yes in practice | `--dry-run` |
 | [`classify`](#classify) | WRITES-STATE | not enforced | none |
 | [`health`](#health) | READ-ONLY (see caveat) | no | itself |
 | [`heartbeat-once`](#heartbeat-once) | WRITES-STATE | not enforced | `health` |
@@ -90,7 +91,7 @@ Command tree:
 ```
 familymonctl [-v]
   status | capture-once | capture-run | capture-supervise | capture-probe (hidden) | classify | health
-         | heartbeat-once | migrate-state | events | conflicts | dashboard
+         | heartbeat-once | migrate-state | events | retention | conflicts | dashboard
   schedule  {import, refresh, show, notify-tick}
   enforce   {show, plan, apply, chargeback, grant, grants, games, revoke, web-block}
   extension {build}
@@ -260,6 +261,25 @@ familymonctl migrate-state [--user TEXT]
 - Idempotent and resumable: on failure it says "migration failed (safe to re-run)". Refuses a symlinked state dir and never follows symlinks inside it.
 - Output: `<user>: nothing to migrate`, or a one-line summary of what moved and where the backup is.
 - Undo: restore from the backup directory by hand; there is no automatic reverse.
+
+## retention
+
+Delete screenshots older than the retention age. The daily `familymon-retention.timer` runs it.
+
+```
+familymonctl retention [--dry-run] [--days N]
+```
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `--dry-run` | flag | off | Report what would be deleted; change nothing. |
+| `--days` | int | `retention.screenshots_days` from `policy.yaml`, else 90 | Override the age; `0` deletes nothing. |
+
+- Class: WRITES-STATE (deletes files). Root in practice: the state dir is root-owned.
+- Prunes whole day directories under `<state>/screenshots/` whose date is older than the age (the directory name decides, not file timestamps), clears `screenshot_path` on the affected `capture` rows, removes emptied directories, and records one `screenshots_pruned` event when anything was deleted. Capture rows and classifications are never deleted. Symlinks, non-date directories and anything that is not a regular file are left alone.
+- Output: `deleted N screenshot(s), X MB, from D day(s) (first to last); keeping 90 days (days before YYYY-MM-DD)`, and `cleared the screenshot path on N capture row(s)` when rows changed. With `--dry-run` the verbs are `would delete` and `would clear`.
+- Exit: 0. A policy value that is not a whole number of days is a usage error (exit 1).
+- Verify: `sudo familymonctl retention --dry-run` (reports 0 afterwards), `sudo familymonctl health` (screenshot count and size), `sudo familymonctl events --kind screenshots_pruned`.
 
 ## events
 

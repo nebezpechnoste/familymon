@@ -92,6 +92,7 @@ Not conffiles:
 | `policy.yaml`: `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks` | Not live. Needs `familymonctl enforce apply` (root), or the next run of `familymon-enforce.timer` (`OnBootSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`). The package enables the timer; it acts once `policy.yaml` exists. |
 | `policy.yaml`: `games.charge_browser_games`, `games.charge_browser_games_when` | Next chargeback tick (`familymon-chargeback.timer`: `OnActiveSec=3min`, `OnUnitActiveSec=5min`). No `enforce apply`. |
 | `policy.yaml`: `web_block.*` | Next `familymon-webblock.timer` tick (every minute). No `enforce apply`. |
+| `policy.yaml`: `retention.screenshots_days` | Next run of `familymon-retention.timer` (daily, 03:00 plus up to 1 h; catches up after boot). Preview: `sudo familymonctl retention --dry-run`. No `enforce apply`. |
 | `schedule.yaml` | Live. Every consumer re-reads it each run (notify-tick every minute, web-block every minute, `classify` every 5 minutes, dashboard per request). The capture loop does not read it. |
 | `schedule_extras.yaml` | Not live. Run `sudo familymonctl schedule refresh` (or `schedule import`). |
 | `messaging_apps.yaml` | Next tick: every capture probe is a new process and loads the list when it starts. |
@@ -122,6 +123,7 @@ Loading:
 | `daily_limits` | per-day map of durations | Required. See 3.2, 3.4. | timekpr daily time budget. | `enforce apply` |
 | `games` | mapping | Optional (`null` becomes `{}`). Non-mapping raises. See 3.5. | PlayTime (game time) enforcement and browser-game chargeback. | `enforce apply`, `enforce chargeback` |
 | `web_block` | mapping | Optional. Absent means disabled. See 3.6. | Lesson-time web blocking. | `enforce web-block` |
+| `retention` | mapping | Optional. `screenshots_days`: whole number, absent = 90, `0` = keep forever. See 3.9. | Screenshot retention. | `retention` |
 
 Parent decides: `lockout`, hours, limits, which categories to block. Safety: `terminate`, `kill` and `shutdown` end the session abruptly.
 
@@ -224,6 +226,14 @@ Root: timekpr's admin surface needs root or `timekpr` group membership (same for
 Safety guard: while `kid` has a logind session, `apply` refuses (exit code 3) if today's new window excludes the current time, or if today's daily limit would be lower than the live one. `--force` overrides. The limit check is conservative and ignores time already spent. If loginctl fails, a session is assumed. Apply during hours that stay allowed, or when `kid` is logged out. Do not use `--force` without the parent's decision.
 
 One-off extensions: use grants (`familymonctl enforce grant ...`), never raw `timekpra --setallowedhours`. Grants are date-bound, stored in `grants.json`, widen only today's hours, and expire on their own. The hourly reconciler reverts manual edits.
+
+### 3.9 `retention`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `screenshots_days` | whole number | 90 | Screenshot files in day directories dated older than this are deleted once a day by `familymon-retention.timer`; `0` keeps them forever. Capture rows and classifications are not affected; their `screenshot_path` is cleared. |
+
+Preview with `sudo familymonctl retention --dry-run`. The job reads the key on every run; no `enforce apply`.
 
 ## 4. `schedule.yaml`
 

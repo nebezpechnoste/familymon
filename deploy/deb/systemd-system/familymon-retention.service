@@ -1,0 +1,13 @@
+# Delete screenshots older than retention.screenshots_days (policy.yaml,
+# default 90; 0 = keep forever). Capture rows and classifications stay; only
+# the image files go. Driven by familymon-retention.timer. Root: the state
+# dir is root-owned.
+[Unit]
+Description=familymon screenshot retention
+ConditionPathExists=/var/lib/familymon/policy.yaml
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/familymonctl retention
+Nice=15
+IOSchedulingClass=idle

@@ -76,7 +76,7 @@ ls /usr/share/familymon/ /etc/familymon/
 
 Expected under `/etc/familymon/`: `messaging_apps.yaml`, `game_apps.yaml`, `schedule_extras.yaml` (dpkg conffiles: local edits are preserved on upgrade). `/usr/share/familymon/` holds `policy_example.yaml` and `chrome-extension/` (`familymon.crx`, `update.xml`, `id`, `version`). The deb also installs `/usr/share/applications/familymon.desktop`.
 
-Upgrades: on every `configure` the postinst makes sure the `familymon` account exists, forces `/etc/familymon/dashboard.env` to root:root 0600, makes `/var/lib/familymon` root:`familymon` 0750, retires any old per-user units (section 11), runs `daemon-reload`, enables the capture and dashboard services and the six timers, and restarts the two services so they never keep old code in memory. Lesson: after an upgrade, if behaviour looks stale compare the unit's `ActiveEnterTimestamp` with the package install time (see [verify-and-health.md](verify-and-health.md)).
+Upgrades: on every `configure` the postinst makes sure the `familymon` account exists, forces `/etc/familymon/dashboard.env` to root:root 0600, makes `/var/lib/familymon` root:`familymon` 0750, retires any old per-user units (section 11), runs `daemon-reload`, enables the capture and dashboard services and the seven timers, and restarts the two services so they never keep old code in memory. Lesson: after an upgrade, if behaviour looks stale compare the unit's `ActiveEnterTimestamp` with the package install time (see [verify-and-health.md](verify-and-health.md)).
 
 ## 5. State directory
 
@@ -113,6 +113,7 @@ sudo systemctl restart familymon-capture.service
 | `familymon-enforce.timer` | `enforce apply` hourly (first run 5 min after boot, plus up to 5 min random delay) | `sudo familymonctl enforce plan` |
 | `familymon-chargeback.timer` | `enforce chargeback` every 5 min (first run 3 min after the timer starts), needs `games.enabled` and `games.charge_browser_games` | `sudo familymonctl enforce chargeback --dry-run` |
 | `familymon-webblock.timer` | `enforce web-block` every minute, needs `web_block.enabled: true` | `sudo familymonctl enforce web-block --dry-run` |
+| `familymon-retention.timer` | `retention` daily (03:00 plus up to 1 h; catches up after boot): deletes screenshots older than `retention.screenshots_days` (default 90) | `sudo familymonctl retention --dry-run` |
 | `familymon-dashboard.service` | the read-only dashboard, as the `familymon` user | none |
 
 Because the enforce, chargeback and webblock timers are enabled as soon as `policy.yaml` exists, preview the policy with `plan` and the `--dry-run` forms before you save it, or keep the relevant sections off (`games.enabled: false`, `web_block.enabled: false`) until the parent has agreed.
@@ -186,7 +187,7 @@ Safety (screenshots): never take a raw screenshot of the monitored session for d
 sudo apt remove familymon
 ```
 
-The prerm disables and stops the capture and dashboard services and all six timers on `remove`. There is no postrm. The Chrome policy file, timekpr settings, the `familymon` system account and `/var/lib/familymon` (captures, screenshots, policy, grants) are not removed. Remove `/etc/opt/chrome/policies/managed/familymon.json` and reset timekpr by hand if the parent wants a clean state, and delete `/var/lib/familymon` only if the parent wants the data gone.
+The prerm disables and stops the capture and dashboard services and all seven timers on `remove`. There is no postrm. The Chrome policy file, timekpr settings, the `familymon` system account and `/var/lib/familymon` (captures, screenshots, policy, grants) are not removed. Remove `/etc/opt/chrome/policies/managed/familymon.json` and reset timekpr by hand if the parent wants a clean state, and delete `/var/lib/familymon` only if the parent wants the data gone.
 
 ## 11. Upgrading from a per-user release
 

@@ -128,7 +128,7 @@ cat > "$STAGING/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
 UNITS_LONG="familymon-capture.service familymon-dashboard.service"
-TIMERS="familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer familymon-enforce.timer familymon-chargeback.timer familymon-webblock.timer"
+TIMERS="familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer familymon-enforce.timer familymon-chargeback.timer familymon-webblock.timer familymon-retention.timer"
 OLD_USER_UNITS="familymon-capture.service familymon-dashboard.service familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer familymon-classify.service familymon-heartbeat.service familymon-notify.service"
 
 if [ "$1" = "configure" ]; then
@@ -179,7 +179,7 @@ if [ "$1" = "remove" ]; then
     systemctl disable --now familymon-capture.service familymon-dashboard.service \
         familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer \
         familymon-enforce.timer familymon-chargeback.timer familymon-webblock.timer \
-        >/dev/null 2>&1 || true
+        familymon-retention.timer >/dev/null 2>&1 || true
 fi
 exit 0
 EOF

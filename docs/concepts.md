@@ -179,7 +179,7 @@ Points to keep straight:
 - timekpr PlayTime does nothing until the global PlayTime switches in `/etc/timekpr/timekpr.conf` (including the enhanced activity monitor) are enabled. Per-user settings are silently masked until then. familymon does not edit that file; it is a manual prerequisite.
 - PlayTime masks are effectively full-match against process path and command line. The driver wraps bare `games.extra_masks` entries as `.*mask.*`. Flatpak apps appear as their `bwrap` wrapper.
 - timekpr-next behaviour observed with 0.5.10 (not familymon code): timekpr applies a play-time-left change on its next poll (about 3 s), so read back after a few seconds; and suspend and lock lockouts are only enforced while the session is active.
-- After a package upgrade, long-running units may still run old code. The deb's postinst runs `daemon-reload`, then enables and restarts `familymon-capture.service` and `familymon-dashboard.service` and starts all six timers; the timer-driven services pick up new code by themselves. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time.
+- After a package upgrade, long-running units may still run old code. The deb's postinst runs `daemon-reload`, then enables and restarts `familymon-capture.service` and `familymon-dashboard.service` and starts all seven timers; the timer-driven services pick up new code by themselves. If behaviour looks stale, compare the unit's `ActiveEnterTimestamp` with the package install time.
 - The package enables everything itself (capture, dashboard, and the classify, heartbeat, notify, enforce, chargeback and webblock timers). Units that need configuration skip themselves until it exists: capture, notify, enforce, chargeback and webblock wait for `/var/lib/familymon/policy.yaml`, and the dashboard waits for `/etc/familymon/dashboard.env`.
 
 Details: [operate/configure-from-intent.md](operate/configure-from-intent.md), [reference/config.md](reference/config.md).
@@ -203,7 +203,7 @@ Live warnings (`schedule notify-tick`) apply the same rules to the lesson in pro
 
 - Window class, title, pid, executable path, geometry and state for every window, each tick, including whether it is on the virtual desktop and activity being shown. A window on another desktop, like a minimized one, is treated as not on screen: it is neither redacted nor counted by the classifier.
 - A screenshot per tick when visually novel, stored as a PNG under `/var/lib/familymon/screenshots` (root-only: directories 0700, files 0600; the dashboard shows whether a screenshot exists, never the image). The DB stores only the file path. The DB is root-owned and group-readable by `familymon`; the state directory itself is root:`familymon` 0750, so the kid cannot open any of it.
-- Classification, events (heartbeat, DB recovery, grants, chargebacks, web blocks, lesson closes, `capture_failed`, `capture_tamper`).
+- Classification, events (heartbeat, DB recovery, grants, chargebacks, web blocks, lesson closes, `capture_failed`, `capture_tamper`, `screenshots_pruned`).
 - Everything stays on the laptop. The dashboard binds to `127.0.0.1` by default, requires HTTP Basic credentials from `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS`, and refuses to start without them.
 
 ### 8.2 Messaging redaction
@@ -249,7 +249,7 @@ Other incident-derived behaviours: Plasma may only show popups for apps with a d
 |---|---|---|
 | State dir | `/var/lib/familymon` (root:`familymon` 0750). `$FAMILYMON_STATE_DIR` overrides it (the dashboard unit sets it); a non-root dev run uses `${XDG_STATE_HOME:-~/.local/state}/familymon` | One state dir for everything. Earlier releases kept the kid's data in their home; `migrate-state` moved it |
 | Capture DB | `<state>/captures.db` | Group-readable by `familymon` |
-| Screenshots | `<state>/screenshots/<YYYY-MM-DD>/<capture_id>.png` | Root-only (dirs 0700, files 0600) |
+| Screenshots | `<state>/screenshots/<YYYY-MM-DD>/<capture_id>.png` | Root-only (dirs 0700, files 0600). Day directories older than `retention.screenshots_days` (default 90) are deleted daily by `familymon-retention.timer`; the rows stay |
 | Schedule | `<state>/schedule.yaml` | Group-readable; read by every consumer |
 | Policy | `<state>/policy.yaml` (root's state dir in production) | Not read from `/etc`; a template ships at `/usr/share/familymon/policy_example.yaml`. Unknown top-level or section keys are not checked, so a typo there is silently ignored (an unknown day name under a per-day map is rejected, as are bad `lockout` and `web_block` values) |
 | Grants | `<root state>/grants.json` | |

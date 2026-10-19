@@ -1,0 +1,13 @@
+# Once a day, at a random moment in the hour after 03:00. Persistent, so a
+# laptop that was off or asleep at the time catches up after the next boot.
+# Enable:  systemctl enable --now familymon-retention.timer  (the postinst does)
+[Unit]
+Description=familymon daily screenshot retention
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

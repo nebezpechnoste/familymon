@@ -77,3 +77,10 @@ web_block:
   # extension (Chrome cannot force an extension into private windows).
   # lessons = disabled while a lesson is in progress, always, or off.
   block_private: lessons
+
+# Screenshot retention. Image files older than this many days are deleted
+# once a day by familymon-retention.timer (by the date of their day folder);
+# the capture rows, titles and classifications that make the timeline are
+# kept. Default 90 when the key is absent; 0 keeps screenshots forever.
+retention:
+  screenshots_days: 90

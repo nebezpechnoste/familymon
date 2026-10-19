@@ -35,6 +35,7 @@ CLI entry point: `familymonctl = "familymon.cli:main"` (`pyproject.toml`). Every
 | `storage/session.py` | `make_engine` (integrity check, `create_all`, additive migration, permissions via `perms.py`) and `make_readonly_engine` (used by the dashboard, `events` and chargeback). |
 | `storage/perms.py` | `secure` / `secure_tree`: root-owned state, group-readable by `familymon` (0640/0750) for the DB and the schedule; 0600/0700 otherwise and in dev runs. |
 | `storage/migrate.py` | `migrate_user_state`: moves an older release's per-user state into the root state dir (behind `migrate-state`). |
+| `storage/retention.py` | `prune_screenshots` / `screenshot_days`: daily deletion of screenshot files older than `retention.screenshots_days`, clearing the rows' paths (behind `retention`). |
 | `storage/recovery.py` | Damaged-DB recovery (`ensure_intact`). |
 | `policy/schedule.py` | `Schedule`, `ScheduleBlock`, `SchoolBreak`, extras file. |
 | `policy/importers.py` | Kings InterHigh timetable JSON importer (`--format kingsinterhigh`). |

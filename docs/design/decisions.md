@@ -101,3 +101,11 @@ Dated decisions with the reasoning, newest last. Each entry says what was decide
 **Decided:** windows on other virtual desktops or activities are treated like minimized ones: not redacted, not counted as present by the classifier. Missing desktop information still counts as on screen.
 
 **Why:** a chat parked on desktop 1 was blacking out a rectangle of whatever desktop 2 showed, tagging every capture as "messaging present", and counting as a visible app for classification. Over-redaction remains the failure mode when KWin can't say where a window is.
+
+## 2026-10-19 · Screenshots are kept 90 days by default
+
+**Decided:** a daily root job deletes screenshot files older than `retention.screenshots_days` (default 90; `0` keeps them forever), judged by the date of their day directory, and clears the paths on the affected capture rows. Capture rows, titles and classifications are kept; they are about a kilobyte each.
+
+**Why:** screenshots were never purged (the plan's 14-day and 24-hour windows belonged to a labeling pipeline that was never built) and had reached 3.3 GB after three weeks on the deployed laptop, now on the root filesystem. Three months keeps a term's worth of history to look back over while bounding both disk use and the amount of sensitive imagery at rest. The parent sets the number.
+
+**Consequences:** `familymonctl retention`, `familymon-retention.timer`, the `screenshots_pruned` event, and a `retention` section in `policy.yaml`.

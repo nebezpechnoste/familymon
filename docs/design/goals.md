@@ -59,4 +59,4 @@ The plan started with four hard constraints. Their status today:
 | Screenshots stay on the laptop they were captured on | Holds. Nothing uploads them. |
 | MVP is monitoring and reports; blocking comes later and the design accommodates it | Blocking shipped: timekpr-next for time and games, Chrome policy and a process sweep for lessons. |
 
-The plan also specified screenshot retention (14 days, then 24 hours) and a nightly `VACUUM`. Neither was implemented; screenshots stay until the parent deletes them. This is listed under known gaps in the README.
+The plan also specified screenshot retention (14 days, then 24 hours) and a nightly `VACUUM`. Retention shipped on 2026-10-19 as a daily job with a 90-day default (`retention.screenshots_days`; the parent can set the plan's shorter windows). `VACUUM` was never needed: image bytes are never stored in the database.

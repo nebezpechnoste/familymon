@@ -284,6 +284,44 @@ def migrate_state_cmd(user: str | None) -> None:
     )
 
 
+@main.command("retention")
+@click.option("--dry-run", is_flag=True, help="Report what would be deleted; change nothing.")
+@click.option("--days", type=int, default=None,
+              help="Override retention.screenshots_days from policy.yaml (0 = never delete).")
+def retention_cmd(dry_run: bool, days: int | None) -> None:
+    """Delete screenshots older than the retention age (familymon-retention.timer, daily).
+
+    Only the image files go, by the date of their day directory; the capture
+    rows and classifications stay and their screenshot paths are cleared.
+    The age is `retention.screenshots_days` in policy.yaml (default 90,
+    0 = keep forever).
+    """
+    from familymon.config import db_path, policy_path, screenshots_dir
+    from familymon.policy.enforcement import load_policy
+    from familymon.storage.retention import prune_screenshots, screenshot_days
+    from familymon.storage.session import make_engine, make_session_factory
+
+    if days is None:
+        policy = load_policy(policy_path()) if policy_path().exists() else {}
+        try:
+            days = screenshot_days(policy)
+        except ValueError as e:
+            raise click.ClickException(str(e)) from None
+    if days <= 0:
+        click.echo("retention off (screenshots_days is 0): nothing deleted")
+        return
+    sessions = make_session_factory(make_engine(db_path()))
+    r = prune_screenshots(sessions, screenshots_dir(), keep_days=days, dry_run=dry_run)
+    verb = "would delete" if dry_run else "deleted"
+    span = f" ({r.days[0]} to {r.days[-1]})" if r.days else ""
+    click.echo(
+        f"{verb} {r.files} screenshot(s), {r.bytes / 1e6:.1f} MB, from {len(r.days)} "
+        f"day(s){span}; keeping {days} days (days before {r.cutoff})"
+    )
+    if r.rows:
+        click.echo(f"{'would clear' if dry_run else 'cleared'} the screenshot path on {r.rows} capture row(s)")
+
+
 @main.command("events")
 @click.option("--day", default=None, help="Day YYYY-MM-DD (default: today).")
 @click.option("--kind", "kinds", multiple=True,

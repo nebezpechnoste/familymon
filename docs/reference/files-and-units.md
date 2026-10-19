@@ -32,7 +32,7 @@ Group-readable by `familymon` (the read-only dashboard's group): dirs 0750, file
 |---|---|---|
 | `captures.db` (plus `-journal`, `-wal`, `-shm`) | `capture-supervise`, `classify`, `heartbeat-once`, enforcement commands | SQLite DB, see section 4. The only database; holds captures, classifications and all events (section 5) |
 | `captures.db.corrupt-<YYYYmmdd-HHMMSS>` | DB self-recovery | the damaged original, kept, never deleted; `-journal`, `-wal`, `-shm` siblings are renamed with it |
-| `screenshots/<YYYY-MM-DD>/<capture_id>.png` | capture supervisor | one PNG per persisted capture; the DB stores only the path. Root-only: day directories 0700, files 0600 |
+| `screenshots/<YYYY-MM-DD>/<capture_id>.png` | capture supervisor | one PNG per persisted capture; the DB stores only the path. Root-only: day directories 0700, files 0600. Day directories dated older than `retention.screenshots_days` (default 90) are deleted by `familymon-retention.timer` |
 | `schedule.yaml` | `schedule import`, `schedule refresh`, or by hand | keys `timezone`, `blocks`, optional `breaks`. Read by every consumer. `schedule import` and `schedule refresh` leave it root:`familymon` 0640 so the dashboard can read it; a hand-written file needs the same mode |
 
 Root only (0600, owner root):
@@ -89,9 +89,9 @@ Not shipped: `/etc/familymon/dashboard.env` (you create it; section 3.4) and `po
 3. Makes `/var/lib/familymon` root:`familymon` 0750.
 4. Retires per-user units of earlier releases: stops them in every running user manager, kills old `familymon.cli capture-run|dashboard` processes, and deletes `familymon-*` symlinks (enable and mask links) under every home's `~/.config/systemd/user` with `find -delete`, which does not follow symlinks.
 5. Runs `familymonctl migrate-state` if `/var/lib/familymon/policy.yaml` exists (prints a re-run hint on failure).
-6. `systemctl daemon-reload`, enables `familymon-capture.service`, `familymon-dashboard.service` and the six timers (classify, heartbeat, notify, enforce, chargeback, webblock), restarts the two services and starts the timers.
+6. `systemctl daemon-reload`, enables `familymon-capture.service`, `familymon-dashboard.service` and the seven timers (classify, heartbeat, notify, enforce, chargeback, webblock, retention), restarts the two services and starts the timers.
 
-**prerm** (on `remove` only): `systemctl disable --now` for the two services and six timers. There is no postrm or preinst. `Depends` includes `adduser`, `util-linux` (for `runuser`), `procps` and `findutils`.
+**prerm** (on `remove` only): `systemctl disable --now` for the two services and seven timers. There is no postrm or preinst. `Depends` includes `adduser`, `util-linux` (for `runuser`), `procps` and `findutils`.
 
 ### 2.5 Other paths
 
@@ -145,6 +145,8 @@ All run as root except the dashboard.
 | `familymon-chargeback.service` | oneshot, `After=timekpr.service`, `ConditionPathExists` policy | `familymonctl enforce chargeback` |
 | `familymon-webblock.timer` | `OnCalendar=*-*-* *:*:00` (every minute), `AccuracySec=5s`, `Persistent=false` | triggers `familymon-webblock.service` |
 | `familymon-webblock.service` | oneshot, `ConditionPathExists` policy | `familymonctl enforce web-block` |
+| `familymon-retention.timer` | `OnCalendar=*-*-* 03:00:00`, `RandomizedDelaySec=1h`, `Persistent=true` | triggers `familymon-retention.service` |
+| `familymon-retention.service` | oneshot, `ConditionPathExists` policy, `Nice=15`, `IOSchedulingClass=idle` | `familymonctl retention` |
 
 A service skipped by `ConditionPathExists` shows as inactive, not failed. A skipped service is not retried: after creating `policy.yaml`, run `sudo systemctl restart familymon-capture.service` (the timer-driven ones pick it up on their next tick). The capture unit is the only long-running supervisor; the kid cannot stop or mask any of these.
 
@@ -268,6 +270,7 @@ The only code paths that insert `event` rows are the ones below (enforce command
 | `capture_tamper` | capture supervisor | the DB | `sink_rejected`, `session` | The window-list sink rejected a push: wrong D-Bus sender or wrong nonce. Something other than KWin's own script tried to deliver a window list. |
 | `db_recovered` | DB open (`make_engine`) | the DB being opened | `method`, `finding`, `damaged_backup`, `salvaged_tables` | A damaged DB was set aside and rebuilt. `method` is `sqlite3-recover`, `iterdump` or `fresh`. `health` prints it. |
 | `playtime_chargeback` | `enforce chargeback` | the DB | `user`, `captures`, `seconds`, `last_capture_id`, `capped` | Browser-game time was charged against PlayTime. `capped` is true when the per-run cap (1800 s) applied. |
+| `screenshots_pruned` | `retention` | the DB | `keep_days`, `cutoff`, `files`, `bytes`, `dirs`, `rows`, `first_day`, `last_day` | Screenshot files older than the retention age were deleted and the affected rows' `screenshot_path` cleared. Written only when something was deleted. |
 | `grant_hours` | `enforce grant` (`--until`) | the DB | `user`, `day`, `start`, `end`, `note` | A date-bound extension of allowed hours was granted. |
 | `grant_playtime` | `enforce grant` (`--playtime`) | the DB | `user`, `seconds`, `note` | Extra PlayTime was granted. |
 | `web_block` | `enforce web-block` | the DB | `user`, `active`, `subject`, `domains` | The Chrome policy file was changed on disk by this run (for example a lesson started or ended, or the config changed). `active` is true while a lesson blocks; `domains` is the blocklist size (0 when inactive). |
