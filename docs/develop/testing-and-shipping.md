@@ -109,6 +109,13 @@ Safety:
 
 `.github/workflows/tests.yml`: runs on push to `main` and on every pull request, on `ubuntu-latest`. Steps: `actions/checkout@v5`, `astral-sh/setup-uv@v6`, `sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr`, `actions/setup-node@v5` (node 22), then `uv run --python 3.14 --all-extras --locked pytest -q`.
 
+GitHub-side checks on the public repository, all free for a public repo (set up 2026-10-19):
+
+- **Dependabot alerts and security updates**: an alert and a PR when a locked Python or npm dependency has a published vulnerability. The nightly upgrader usually gets there first; such a PR can be closed. `.github/dependabot.yml` also opens one grouped PR a month for new major versions of the workflow's Actions. Python packages are deliberately not managed by Dependabot (see the dependency policy above).
+- **CodeQL** default setup for Python, JavaScript and Actions: scans every push to `main`, every PR and weekly. Findings land in the Security tab and never fail a build.
+- **Ruleset "protect main"**: blocks force-pushes and deletion of `main` for everyone, maintainer included. A history rewrite needs the ruleset disabled first, then re-enabled.
+- **CodeRabbit** (`.coderabbit.yaml`): reviews pull requests only, skips Dependabot's PRs, and carries the project's privacy and safety rules as path instructions. Direct pushes to `main` are not reviewed, so open a PR for anything non-trivial. The app is installed on this repository only, never on the maintainer's private repository.
+
 ## Pre-push leak guard (maintainer)
 
 `.githooks/pre-push` blocks pushes that would publish private strings. Enable once per clone:
