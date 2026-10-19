@@ -16,8 +16,9 @@ familymon is local-first parental-control software for a Linux laptop (KDE Plasm
 | Look up an exact command, option, config key, path, unit or event | [docs/reference/cli.md](docs/reference/cli.md), [docs/reference/config.md](docs/reference/config.md), [docs/reference/files-and-units.md](docs/reference/files-and-units.md) |
 | Understand what the child can and can't tamper with | [docs/develop/tamper-resistance.md](docs/develop/tamper-resistance.md) |
 | Change the code | [docs/develop/architecture.md](docs/develop/architecture.md), [docs/develop/testing-and-shipping.md](docs/develop/testing-and-shipping.md), and [docs/develop/tamper-resistance.md](docs/develop/tamper-resistance.md) before touching capture, units, state or permissions |
+| Understand the goals, or why something is built the way it is | [docs/design/goals.md](docs/design/goals.md), [docs/design/decisions.md](docs/design/decisions.md) |
 
-`README.md` gives the human overview and the list of known gaps. `docs/PLAN.md` is the original design plan, kept for its reasoning; parts of it are superseded.
+`README.md` gives the human overview and the list of known gaps. `docs/PLAN.md` is the original design plan, kept for history; parts of it are superseded, and the decision log says which.
 
 ## Rules that are never optional
 
