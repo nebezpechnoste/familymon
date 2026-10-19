@@ -32,7 +32,7 @@ The parent is assumed to operate familymon through an AI agent (see [../../AGENT
 - **Perfect enforcement.** A determined teenager with physical access can boot something else. Familymon assumes a standard (non-admin) account, locked firmware and boot loader, and a parent who looks at the dashboard. The goal is that circumvention takes effort and leaves a trace, not that it is impossible.
 - **Reading the content of chats.** Messaging windows are redacted; their titles are recorded (the app and, for web chats, the page title), their content never.
 - **Replacing timekpr-next.** Time and per-app budgets are timekpr's job; familymon drives it and adds what it can't see.
-- **Windows, macOS, other desktops.** The capture is built on KWin (KDE Plasma 6, Wayland). Ports were considered and rejected along with commercialisation; see [../research/commercialization-2026-10.md](../research/commercialization-2026-10.md).
+- **Windows, macOS, other desktops.** The capture is built on KWin (KDE Plasma 6, Wayland). Ports were considered and rejected along with commercialisation (see the decision log; the market research behind it is kept in the maintainer's private notes).
 
 ## Principles
 

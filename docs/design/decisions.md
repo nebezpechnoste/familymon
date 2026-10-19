@@ -78,7 +78,7 @@ Dated decisions with the reasoning, newest last. Each entry says what was decide
 
 **Decided:** publish under GPL-3.0-or-later; no commercialisation, no ports to Windows or macOS.
 
-**Why:** the reachable market (homeschooling and online-school families who want this on a desktop) is small and crowded with free OS features; the author does not want to sell software to other parents; and a privacy-sensitive monitoring tool is more credible when its code can be read. Research: [../research/commercialization-2026-10.md](../research/commercialization-2026-10.md).
+**Why:** the reachable market (homeschooling and online-school families who want this on a desktop) is small and crowded with free OS features; the author does not want to sell software to other parents; and a privacy-sensitive monitoring tool is more credible when its code can be read. The market research behind this is kept in the maintainer's private notes, not in this repository.
 
 **Consequences:** the public repository starts from one clean commit; family-specific configuration lives outside it; the docs are written for any parent's AI agent.
 
