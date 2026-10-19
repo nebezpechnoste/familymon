@@ -26,7 +26,7 @@ you write code.
 ```bash
 uv sync --all-extras
 uv run pytest -q             # Python suite
-node --test tests/js/        # Chrome extension rules
+node --test tests/js/*.test.mjs   # Chrome extension rules (also run by pytest)
 ```
 
 `uv.lock` is committed and refreshed nightly by `scripts/uv-upgrade.sh`, but
