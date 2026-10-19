@@ -119,3 +119,16 @@ def test_malformed_windows_json_is_isolated(sessions):
     assert rows[good].category == "browsing_other"
     assert rows[bad].category == "unknown"
     assert "TypeError" in rows[bad].evidence_text
+
+
+def test_window_views_carry_desktop_membership_and_keep_old_rows_visible():
+    from familymon.analyze.classifier_runner import _window_views
+
+    row = Capture(
+        captured_at=datetime.now(), active_wm_class="firefox", active_title="t",
+        windows=[
+            {"wm_class": "telegram-desktop", "title": "chat", "on_current_desktop": False},
+            {"wm_class": "minetest", "title": "row from before the field existed"},
+        ],
+    )
+    assert [v.hidden for v in _window_views(row)] == [False, True, False]

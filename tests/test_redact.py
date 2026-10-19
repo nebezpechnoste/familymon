@@ -106,3 +106,10 @@ def test_mixed_valid_and_zero_geometry_messaging_forces_full_skip():
         redact_messaging_regions(png, windows, (100.0, 100.0), _skip("telegram-desktop"))
         is None
     )
+
+
+def test_messaging_window_on_another_desktop_is_left_alone():
+    png = _png(100, 100)
+    parked = _msg_win(0, 0, 40, 100).model_copy(update={"on_current_desktop": False})
+    out = redact_messaging_regions(png, [parked], (100.0, 100.0), _skip("telegram-desktop"))
+    assert out == (png, False)

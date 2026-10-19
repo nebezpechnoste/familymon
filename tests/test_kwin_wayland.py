@@ -308,3 +308,48 @@ async def test_no_screenshot_when_the_window_list_failed():
     assert result.window_list_ok is False
     assert result.screenshot_skipped_reason == "window_list_unavailable"
     backend._spectacle.assert_not_called()
+
+
+def test_parse_marks_windows_on_other_desktops_and_activities_hidden():
+    from familymon.capture.kwin_wayland import _parse_window_list
+
+    raw = {
+        "currentDesktop": "d2", "currentActivity": "a1", "vw": 1, "vh": 1, "screens": 1,
+        "windows": [
+            {"caption": "chat", "resourceClass": "telegram-desktop", "desktops": ["d1"],
+             "onAllDesktops": False, "activities": ["a1"]},
+            {"caption": "here", "resourceClass": "firefox", "desktops": ["d2"],
+             "onAllDesktops": False, "activities": ["a1"]},
+            {"caption": "everywhere", "resourceClass": "konsole", "desktops": [],
+             "onAllDesktops": True, "activities": []},
+            {"caption": "other activity", "resourceClass": "slack", "desktops": ["d2"],
+             "onAllDesktops": False, "activities": ["a2"]},
+            {"caption": "old kwin", "resourceClass": "x"},
+        ],
+    }
+    by = {w.title: w.on_current_desktop for w in _parse_window_list(raw).windows}
+    assert by == {"chat": False, "here": True, "everywhere": True,
+                  "other activity": False, "old kwin": True}
+
+
+@pytest.mark.asyncio
+async def test_messaging_window_on_another_virtual_desktop_is_not_redacted():
+    """A chat parked on another desktop is not on screen: its rectangle shows
+    something else there, so blacking it out would hide unrelated content and
+    tag the capture messaging_present for nothing."""
+    backend = _make_backend(_skip("telegram-desktop"))
+    backend._enumerate_windows.return_value = _winlist(
+        [
+            WindowSnapshot(wm_class="telegram-desktop_telegram-desktop", title="news",
+                           on_current_desktop=False, x=0, y=0, width=50, height=100),
+            WindowSnapshot(wm_class="firefox_firefox", title="x", active=True,
+                           x=50, y=0, width=50, height=100),
+        ]
+    )
+    png = _png()
+    backend._spectacle.return_value = png
+
+    result = await backend.snapshot()
+    assert result.screenshot_bytes == png
+    assert result.messaging_present is False
+    assert result.screenshot_redacted is False

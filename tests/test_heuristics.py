@@ -196,3 +196,18 @@ def test_schedule_group_code_in_title_classifies_as_school():
         1, [_win("google-chrome", "10L CYCLE TEST AC-26/27 - Google Chrome", active=True)]
     )
     assert cls.category is Category.SCHOOL
+
+
+def test_window_on_another_virtual_desktop_does_not_contribute():
+    """Parked on another desktop or activity = not on screen, like minimized."""
+    c = _classifier(
+        apps_map={"telegram-desktop": Category.MESSAGING, "minetest": Category.GAMES}
+    )
+    windows = [
+        _win("telegram-desktop_telegram-desktop", "chat", active=True),
+        WindowView(wm_class="minetest", title="Minetest", on_current_desktop=False),
+    ]
+    cls = c.classify(1, windows)
+    assert cls.category is Category.MESSAGING
+    assert cls.present_categories == [Category.MESSAGING]
+    assert "of 1 visible window)" in cls.evidence_text

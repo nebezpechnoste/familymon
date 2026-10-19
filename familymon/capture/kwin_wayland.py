@@ -48,8 +48,17 @@ class _WindowList:
 
 
 _KWIN_WINDOW_LIST_SCRIPT = r"""
-var out = {nonce: "@NONCE@", windows: [], vw: 0, vh: 0, screens: 0, err: null};
+function desktopIds(w) {
+    var ids = [];
+    try { for (var j = 0; j < w.desktops.length; j++) ids.push(w.desktops[j].id); } catch (e) {}
+    return ids;
+}
+var out = {nonce: "@NONCE@", windows: [], vw: 0, vh: 0, screens: 0, err: null,
+           currentDesktop: null, currentActivity: null};
 try {
+    var cur = workspace.currentDesktop;
+    out.currentDesktop = cur ? cur.id : null;
+    out.currentActivity = workspace.currentActivity || null;
     var wins = workspace.windowList();
     for (var i = 0; i < wins.length; i++) {
         var w = wins[i];
@@ -62,6 +71,9 @@ try {
             active: w === workspace.activeWindow,
             internalId: w.internalId ? w.internalId.toString() : null,
             minimized: w.minimized,
+            onAllDesktops: w.onAllDesktops,
+            desktops: desktopIds(w),
+            activities: w.activities || [],
             skipPager: w.skipPager,
             skipTaskbar: w.skipTaskbar,
             windowType: w.windowType,
@@ -182,6 +194,53 @@ def _user_session_env() -> dict[str, str]:
         "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
         "HOME": os.environ.get("HOME", "/"),
     }
+
+
+def _on_current_desktop(w: dict, desktop: str | None, activity: str | None) -> bool:
+    """Is this window on the virtual desktop and activity shown right now?
+
+    Missing information (an older KWin, a window without a desktop list)
+    counts as "yes": over-redacting is the safe failure."""
+    if desktop and not w.get("onAllDesktops"):
+        desktops = w.get("desktops")
+        if isinstance(desktops, list) and desktops and desktop not in desktops:
+            return False
+    if activity:
+        activities = w.get("activities")
+        if isinstance(activities, list) and activities and activity not in activities:
+            return False
+    return True
+
+
+def _parse_window_list(raw: dict) -> _WindowList:
+    desktop = raw.get("currentDesktop") or None
+    activity = raw.get("currentActivity") or None
+    windows: list[WindowSnapshot] = []
+    for w in raw.get("windows", []):
+        # Filter out Plasma's own internal/decoration windows. These have
+        # both skipPager and skipTaskbar set and add only noise.
+        if w.get("skipPager") and w.get("skipTaskbar"):
+            continue
+        windows.append(
+            WindowSnapshot(
+                wm_class=w.get("resourceClass"),
+                title=w.get("caption"),
+                pid=w.get("pid"),
+                active=bool(w.get("active")),
+                minimized=bool(w.get("minimized")),
+                on_current_desktop=_on_current_desktop(w, desktop, activity),
+                uuid=w.get("internalId"),
+                x=float(w.get("x") or 0.0),
+                y=float(w.get("y") or 0.0),
+                width=float(w.get("width") or 0.0),
+                height=float(w.get("height") or 0.0),
+            )
+        )
+    return _WindowList(
+        windows=windows,
+        logical_size=(float(raw.get("vw") or 0.0), float(raw.get("vh") or 0.0)),
+        screen_count=int(raw.get("screens") or 0),
+    )
 
 
 class KWinWaylandBackend:
@@ -322,31 +381,7 @@ class KWinWaylandBackend:
         if raw.get("err"):
             logger.warning("KWin script error: %s", raw["err"])
 
-        windows: list[WindowSnapshot] = []
-        for w in raw.get("windows", []):
-            # Filter out Plasma's own internal/decoration windows. These have
-            # both skipPager and skipTaskbar set and add only noise.
-            if w.get("skipPager") and w.get("skipTaskbar"):
-                continue
-            windows.append(
-                WindowSnapshot(
-                    wm_class=w.get("resourceClass"),
-                    title=w.get("caption"),
-                    pid=w.get("pid"),
-                    active=bool(w.get("active")),
-                    minimized=bool(w.get("minimized")),
-                    uuid=w.get("internalId"),
-                    x=float(w.get("x") or 0.0),
-                    y=float(w.get("y") or 0.0),
-                    width=float(w.get("width") or 0.0),
-                    height=float(w.get("height") or 0.0),
-                )
-            )
-        return _WindowList(
-            windows=windows,
-            logical_size=(float(raw.get("vw") or 0.0), float(raw.get("vh") or 0.0)),
-            screen_count=int(raw.get("screens") or 0),
-        )
+        return _parse_window_list(raw)
 
     async def _spectacle(self) -> bytes:
         with tempfile.NamedTemporaryFile(
@@ -395,7 +430,7 @@ class KWinWaylandBackend:
         captured_at = datetime.now().astimezone()
 
         messaging_present = any(
-            not w.minimized and self._skip_list.should_skip(w.wm_class, w.title)
+            not w.hidden and self._skip_list.should_skip(w.wm_class, w.title)
             for w in windows
         )
 

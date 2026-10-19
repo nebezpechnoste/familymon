@@ -448,3 +448,8 @@ def test_dashboard_opens_the_database_read_only(tmp_path, monkeypatch):
     assert opened == [tmp_path / "captures.db"]
     r = TestClient(app).get("/", auth=(_USER, _PASS))
     assert r.status_code == 200
+
+
+def test_api_rejects_a_bad_day_with_400(client: TestClient):
+    assert client.get("/api/captures?day=nope", auth=(_USER, _PASS)).status_code == 400
+    assert client.get("/api/stats?day=2026-13-01", auth=(_USER, _PASS)).status_code == 400

@@ -203,6 +203,15 @@ def _fmt_clock(iso_ts: str) -> str:
     return iso_ts[11:19]
 
 
+def _parse_day(day: str | None) -> date:
+    if not day:
+        return date.today()
+    try:
+        return date.fromisoformat(day)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="invalid date") from e
+
+
 def create_app(
     *,
     session_factory: sessionmaker | None = None,
@@ -248,7 +257,7 @@ def create_app(
         day: str | None = None,
         _authed: str = Depends(auth),
     ) -> list[dict[str, Any]]:
-        target = date.fromisoformat(day) if day else date.today()
+        target = _parse_day(day)
         return _load_captures(session_factory, target)
 
     @app.get("/api/stats")
@@ -256,7 +265,7 @@ def create_app(
         day: str | None = None,
         _authed: str = Depends(auth),
     ) -> dict[str, Any]:
-        target = date.fromisoformat(day) if day else date.today()
+        target = _parse_day(day)
         captures = _load_captures(session_factory, target)
         blocks = _build_blocks(captures, capture_interval_seconds())
         return {

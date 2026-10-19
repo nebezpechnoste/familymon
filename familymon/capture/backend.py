@@ -23,12 +23,21 @@ class WindowSnapshot(BaseModel):
     exe: str | None = None
     active: bool = False
     minimized: bool = False
+    # On the virtual desktop and activity being shown right now (true for a
+    # window on all desktops). A window elsewhere is not on screen: it is
+    # neither redacted nor counted as visible, exactly like a minimized one.
+    on_current_desktop: bool = True
     uuid: str | None = None
     # frameGeometry in logical (unscaled) coordinates; 0 when unknown.
     x: float = 0.0
     y: float = 0.0
     width: float = 0.0
     height: float = 0.0
+
+    @property
+    def hidden(self) -> bool:
+        """Not on screen: minimized, or on another desktop or activity."""
+        return self.minimized or not self.on_current_desktop
 
 
 class CaptureResult(BaseModel):

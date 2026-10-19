@@ -118,6 +118,8 @@ def _window_views(capture: CaptureRow) -> list[WindowView]:
                 title=w.get("title"),
                 active=bool(w.get("active")),
                 minimized=bool(w.get("minimized")),
+                # Rows from before this field existed count as on screen.
+                on_current_desktop=bool(w.get("on_current_desktop", True)),
             )
         )
     return windows

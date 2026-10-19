@@ -87,7 +87,7 @@ def redact_messaging_regions(
     messaging = [
         w
         for w in windows
-        if not w.minimized and skip_list.should_skip(w.wm_class, w.title)
+        if not w.hidden and skip_list.should_skip(w.wm_class, w.title)
     ]
     if not messaging:
         # The caller only invokes us when a messaging window is present, but

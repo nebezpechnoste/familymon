@@ -92,6 +92,12 @@ class WindowView:
     title: str | None = None
     active: bool = False
     minimized: bool = False
+    on_current_desktop: bool = True
+
+    @property
+    def hidden(self) -> bool:
+        """Not on screen: minimized, or on another virtual desktop/activity."""
+        return self.minimized or not self.on_current_desktop
 
 
 @dataclass(frozen=True)
@@ -132,7 +138,7 @@ class HeuristicClassifier:
         self._brands = brands
 
     def _classify_window(self, w: WindowView) -> _WindowVerdict | None:
-        if w.minimized:
+        if w.hidden:
             return None
 
         if _looks_like_browser(w.wm_class):
@@ -200,7 +206,7 @@ class HeuristicClassifier:
         present = sorted(
             {v.category for v in verdicts}, key=lambda c: _PRIORITY_INDEX[c]
         )
-        n_visible = sum(1 for w in windows if not w.minimized)
+        n_visible = sum(1 for w in windows if not w.hidden)
         plural = "s" if n_visible != 1 else ""
         return Classification(
             capture_id=capture_id,
