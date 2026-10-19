@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit (free for public repositories) reviews pull requests. Direct
+# pushes to main are not reviewed; open a PR for anything non-trivial.
+language: en-GB
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    # Dependabot's grouped Actions bumps need CI, not a review.
+    ignore_usernames: ["dependabot[bot]"]
+  path_instructions:
+    - path: "familymon/capture/**"
+      instructions: >-
+        Privacy is the core promise: screenshots never leave the machine, and a
+        window listed in the messaging-app config must never reach an image
+        unredacted. Flag anything that could capture or persist a screenshot
+        when redaction cannot be guaranteed, and anything that lets the
+        monitored user's own processes influence what is captured.
+    - path: "familymon/policy/**"
+      instructions: >-
+        Enforcement must never cut off a live session by surprise and must
+        never be weakened by a signal the monitored user controls. The parent
+        decides policy; code only translates it.
+    - path: "deploy/**"
+      instructions: >-
+        Everything runs as root system units with state under
+        /var/lib/familymon; the monitored user must not be able to read, stop
+        or mask any of it. Check file modes and unit hardening.
+    - path: "tests/**"
+      instructions: >-
+        Tests must never touch real processes, real user state or real
+        services; anything destructive acts only on what the test created.
+        Examples use the placeholders kid, kid-laptop, 192.0.2.0/24 and
+        Europe/Berlin, never real family details.
+chat:
+  auto_reply: true

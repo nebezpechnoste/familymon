@@ -1,0 +1,16 @@
+# Dependabot: keep the GitHub Actions in our workflows current. One grouped
+# PR a month at most. Python dependencies are deliberately NOT managed here:
+# the maintainer's nightly job upgrades uv.lock and only commits on green
+# tests (see docs/develop/testing-and-shipping.md). Security alerts for
+# Python and npm packages are separate and stay on.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "CI"
