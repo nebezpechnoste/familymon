@@ -1,0 +1,4 @@
+#!/bin/sh
+# familymon CLI — runs from the bundled venv (exact dependency set that
+# passed the test suite at package build time; see uv.lock in the source).
+exec /opt/familymon/venv/bin/python3 -m familymon.cli "$@"

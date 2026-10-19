@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Blocked during the lesson</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { display: flex; align-items: center; justify-content: center;
+           background: #f3f4f6; color: #1f2937;
+           font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { background: #fff; border-radius: 12px; padding: 32px 36px; max-width: 480px;
+           box-shadow: 0 8px 30px rgba(0,0,0,.08); }
+    .badge { display: inline-block; font-size: 13px; font-weight: 600; letter-spacing: .04em;
+             text-transform: uppercase; color: #b91c1c; background: #fee2e2;
+             border-radius: 999px; padding: 2px 10px; margin-bottom: 14px; }
+    h1 { font-size: 22px; margin: 0 0 8px; overflow-wrap: anywhere; }
+    p { margin: 8px 0; }
+    .muted { color: #6b7280; font-size: 14px; }
+    code { background: #f3f4f6; padding: 1px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="badge">Lesson in progress</span>
+    <h1 id="title">This site is blocked during the lesson</h1>
+    <p id="detail"></p>
+    <p class="muted">This tab was moved here by familymon. After the lesson, press Back to return.</p>
+  </main>
+  <script src="blocked.js"></script>
+</body>
+</html>

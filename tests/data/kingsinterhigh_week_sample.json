@@ -1,0 +1,47 @@
+{
+  "timetableDays": ["Monday", "Tuesday"],
+  "timetableLessons": [
+    {
+      "groupName": "SAMPLE MATHS",
+      "lessonDate": "2026-05-25",
+      "lessonDay": "Monday",
+      "lessonType": "Explore",
+      "observedStartTime": "09:20",
+      "observedEndTime": "10:00",
+      "observedStartDateTime": "2026-05-25T09:20:00+02:00",
+      "observedEndDateTime": "2026-05-25T10:00:00+02:00",
+      "originStartTime": "07:20",
+      "originEndTime": "08:00",
+      "originStartDateTime": "2026-05-25T07:20:00+00:00",
+      "originEndDateTime": "2026-05-25T08:00:00+00:00",
+      "subjectName": "Maths",
+      "teachers": [{"email": "teacher.one@example.test", "name": "Teacher One"}]
+    },
+    {
+      "groupName": "SAMPLE SCIENCE",
+      "lessonDate": "2026-05-25",
+      "lessonDay": "Monday",
+      "lessonType": "Explore",
+      "observedStartTime": "10:50",
+      "observedEndTime": "11:30",
+      "subjectName": "Science",
+      "teachers": [{"email": "teacher.two@example.test", "name": "Teacher Two"}]
+    },
+    {
+      "groupName": "SAMPLE MATHS",
+      "lessonDate": "2026-05-26",
+      "lessonDay": "Tuesday",
+      "lessonType": "Explore",
+      "observedStartTime": "09:20",
+      "observedEndTime": "10:00",
+      "subjectName": "Maths",
+      "teachers": [{"email": "teacher.one@example.test", "name": "Teacher One"}]
+    }
+  ],
+  "timetablePeriods": [
+    {"displayOrder": 1, "periodName": "P1 UK", "observedStartTime": "09:20", "observedEndTime": "10:00"},
+    {"displayOrder": 2, "periodName": "Break 1", "observedStartTime": "10:00", "observedEndTime": "10:50"},
+    {"displayOrder": 3, "periodName": "P2 UK", "observedStartTime": "10:50", "observedEndTime": "11:30"}
+  ],
+  "timezone": "(UTC+01:00) Central European Time (Berlin)"
+}

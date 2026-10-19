@@ -1,0 +1,9 @@
+# Lesson-time web blocking: reconcile Chrome's managed policy to the school
+# schedule (URLBlocklist during a lesson, dropped otherwise). One tick; driven
+# by familymon-webblock.timer. Root: writes /etc/opt/chrome/policies/managed.
+[Unit]
+Description=familymon lesson-time web block (Chrome managed policy)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/familymonctl enforce web-block

@@ -1,0 +1,25 @@
+# Parent-maintained additions to the imported school timetable. Merged on
+# every `familymonctl schedule import`, so a fresh export never loses them.
+# Deployed copy: /etc/familymon/schedule_extras.yaml (kept across upgrades).
+#
+# exclude_subjects: imported lessons to drop from monitored school time
+#   (e.g. self-paced work the kid does whenever).
+# blocks: custom items. Any category except "school" is NOT conflict-monitored;
+#   notify: true pops a desktop notification in the kid's session at start.
+# breaks: date ranges (inclusive) with no lessons — half term, Christmas. The
+#   imported lessons stay; web blocking, warnings and conflicts pause for the
+#   listed categories (default: school only) and resume by themselves.
+#   Changed the file without a fresh timetable export? Run
+#   `familymonctl schedule refresh` as the monitored user.
+#
+# exclude_subjects:
+#   - Discovery UK
+# blocks:
+#   - {day: Monday, start: "10:15", end: "11:15", subject: Maths, category: study, notify: true}
+#   - {day: Tuesday, start: "12:00", end: "13:00", subject: Workout, category: routine, notify: true}
+# breaks:
+#   - {start: 2026-10-19, end: 2026-11-01, name: Half term}
+#   - {start: 2026-12-21, end: 2027-01-03, name: Christmas, categories: [school, study]}
+exclude_subjects: []
+blocks: []
+breaks: []

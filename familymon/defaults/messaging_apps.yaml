@@ -1,0 +1,67 @@
+# Default list of window classes (WM_CLASS / resourceClass on Wayland) whose
+# captures should NEVER include screenshot bytes — only window metadata.
+# This is a privacy contract that both parent and teen can edit.
+#
+# Matching:
+#   - case-insensitive on the whole resourceClass, AND
+#   - case-insensitive on any underscore-separated segment of it,
+# which makes a single entry like `telegram-desktop` match both:
+#   - native:  "TelegramDesktop"
+#   - flatpak: "org.telegram.desktop" (via the org.telegram.desktop entry below)
+#   - snap:    "telegram-desktop_telegram-desktop"
+
+window_classes:
+  # Telegram
+  - telegram-desktop          # snap / dash-form
+  - telegramdesktop           # legacy / native
+  - org.telegram.desktop      # flatpak reverse-DNS
+
+  # Discord
+  - discord
+  - com.discordapp.discord
+
+  # Signal
+  - signal
+  - signal-desktop
+  - org.signal.signal
+
+  # Element / Matrix
+  - element
+  - element-desktop
+  - io.element.element
+
+  # WhatsApp native
+  - whatsapp
+  - whatsapp-desktop
+  - whatsapp-for-linux
+
+  # Facebook Messenger native wrappers
+  - messenger
+  - "facebook messenger"
+
+  # Misc closed-source messengers
+  - skype
+  - viber
+
+  # Email (also private content)
+  - thunderbird
+  - betterbird
+
+  # Note: WhatsApp Web / Messenger / Discord-Web in a regular browser tab
+  # is NOT caught here — the browser's resourceClass is just "firefox" or
+  # "firefox_firefox" / "chromium". URL-based filtering in the heuristic
+  # layer (phase 2+) handles those.
+
+# Regex patterns (case-insensitive, re.search) matched against window titles —
+# the way we catch web chats inside a browser window, whose WM_CLASS is just
+# "firefox"/"chromium" and so isn't caught by window_classes. A match redacts
+# the whole browser window (coarse but safe). A precise per-URL approach is
+# planned later via DNS / AT-SPI URL extraction.
+title_patterns:
+  # WhatsApp Web in any browser. The page-title segment is exactly "WhatsApp"
+  # (optionally "(N) WhatsApp" with an unread count) — it never contains the
+  # contact name or message content (verified across open conversations), so
+  # matching the title leaks nothing. Anchored + requires the spaced title
+  # separator right after "WhatsApp", so it won't fire on a page merely *about*
+  # WhatsApp (e.g. "WhatsApp adds a feature - TechCrunch — Mozilla Firefox").
+  - '^(?:\(\d+\)\s*)?WhatsApp\s+[—–-]\s+'

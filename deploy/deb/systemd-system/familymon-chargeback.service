@@ -1,0 +1,10 @@
+# Charge browser-game minutes (which timekpr can't see) to the user's
+# PlayTime budget. One tick; driven by familymon-chargeback.timer. Root:
+# needs timekpr's admin surface and read access to the kid's capture DB.
+[Unit]
+Description=familymon browser-game charge-back to timekpr PlayTime
+After=timekpr.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/familymonctl enforce chargeback

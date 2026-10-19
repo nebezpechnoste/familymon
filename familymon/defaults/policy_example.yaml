@@ -1,0 +1,79 @@
+# familymon enforcement policy — drives timekpr-next via `familymonctl enforce`.
+# Copy to the state dir as policy.yaml (see `familymonctl status` for the path)
+# and edit. Nothing is applied until you run `familymonctl enforce apply`;
+# `familymonctl enforce plan` shows the diff first.
+
+# The Linux account the limits apply to.
+user: kid
+
+# What happens when a limit or window is hit:
+# lock | suspend | suspendwake | terminate | kill | shutdown.
+# "lock" is the gentle default — work survives, the screen locks.
+lockout: lock
+
+# Bedtime window: hours of the day the computer may be used, inclusive.
+# {start: 7, end: 21} means usable 07:00 through 21:59.
+# Days omitted here fall back to `default`. Day names are lowercase English.
+allowed_hours:
+  default: {start: 7, end: 21}
+  saturday: {start: 8, end: 22}
+  sunday: {start: 8, end: 22}
+
+# Total screen time per day: "2h30m", "45m", plain seconds, or "unlimited".
+daily_limits:
+  default: unlimited
+
+# Game-time budgets (timekpr PlayTime). Activity masks for installed Steam
+# games are generated automatically from the library scan at apply time;
+# extra_masks adds non-Steam launchers (regex on the process's exe path /
+# cmdline, no []^$; — bare names are wrapped with .* automatically).
+# Flatpak apps: timekpr only sees the bwrap wrapper, so match it by command:
+#   .*bwrap.*sober.*[Roblox]
+games:
+  enabled: true
+  # Also charge browser games (Armor Games, Poki, ... — classified `games` by
+  # familymon but invisible to timekpr's process masks) to the same budget,
+  # via familymon-chargeback.timer. Minutes with a native game running in the
+  # background are never double-charged.
+  charge_browser_games: true
+  # Which minutes bill: "visible" (default) — a browser game visible anywhere
+  # on screen counts, focused or not, like timekpr counts a native game that's
+  # merely running; "focused" — only when the game tab itself is focused.
+  charge_browser_games_when: visible
+  daily_limits:
+    default: 1h
+    saturday: 2h
+    sunday: 2h
+  extra_masks:
+    - .*bwrap.*sober.*[Roblox]
+    - .*PrismLauncher/instances.*[Minecraft]
+
+# Lesson-time web blocking. While a lesson (schedule block of category
+# "school") is in progress, familymon writes a URLBlocklist into Chrome's
+# machine-wide managed policy (/etc/opt/chrome/policies/managed/familymon.json,
+# root-owned, reloaded by Chrome live); outside lessons it is dropped.
+# Reconciled every minute by familymon-webblock.timer (system scope).
+# `video` is deliberately not blocked — a lesson may use YouTube; streaming
+# video during a lesson is still flagged on the dashboard. School conferencing
+# (meet.google.com, zoom.us, teams.microsoft.com) is never blocked.
+web_block:
+  enabled: true
+  # Domain categories from domains_starter.yaml (override: /etc/familymon/).
+  categories: [messaging, social, games]
+  # Extra sites to block during lessons (host; subdomains included).
+  extra_domains: []
+  # Never block these, even if a category lists them.
+  allow_domains: []
+  # Any other browser would bypass the Chrome policy: during a lesson, every
+  # process of the user that is a known browser (deb/snap/flatpak/AppImage/
+  # tarball forms; Chrome itself is never listed) is closed, with a desktop
+  # notice. Same tick, every minute.
+  forbid_other_browsers: true
+  # Extra apps to close during lessons — games.extra_masks syntax (regex on
+  # the process's exe path + cmdline; bare names are wrapped with .*).
+  forbid_apps: []
+  # Private windows: Incognito and the Guest profile still obey the URL block,
+  # but a tab opened there before the lesson escapes the tab-closing
+  # extension (Chrome cannot force an extension into private windows).
+  # lessons = disabled while a lesson is in progress, always, or off.
+  block_private: lessons

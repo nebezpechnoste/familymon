@@ -1,0 +1,14 @@
+# Hourly + shortly after boot: catches drift from unattended timekpr upgrades
+# (daemon restarts, config rewrites) and policy.yaml edits.
+# Enable:  systemctl enable --now familymon-enforce.timer
+[Unit]
+Description=familymon periodic enforcement reconcile
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

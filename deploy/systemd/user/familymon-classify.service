@@ -1,0 +1,9 @@
+# One-shot heuristic classification pass, driven by familymon-classify.timer.
+
+[Unit]
+Description=familymon classify pass (dogfood)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/git/personal/familymon
+ExecStart=%h/git/personal/familymon/.venv/bin/familymonctl classify

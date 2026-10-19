@@ -1,0 +1,9 @@
+const q = new URLSearchParams(location.search);
+const host = q.get("host") || "This site";
+const subject = q.get("subject") || "";
+const until = q.get("until") || "";
+document.getElementById("title").textContent = `${host} isn't available right now`;
+let detail = subject ? `${subject} is in progress` : "A lesson is in progress";
+if (until) detail += ` (until ${until})`;
+document.getElementById("detail").textContent = detail + ".";
+document.title = `${host} — blocked during the lesson`;

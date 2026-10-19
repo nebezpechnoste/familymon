@@ -1,0 +1,11 @@
+# Reconcile timekpr-next to policy.yaml (minimal diff; no-op when converged).
+# Runs as root: timekpr's admin surface requires it. Driven by the timer.
+# Exit 3 = the apply guard refused because the change would cut an active
+# session right now — the unit shows "failed" and the next run retries.
+[Unit]
+Description=familymon enforcement reconcile (timekpr-next)
+After=timekpr.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/familymonctl enforce apply

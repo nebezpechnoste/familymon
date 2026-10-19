@@ -1,0 +1,21 @@
+# Dogfood capture collector — a systemd *user* service for the dev machine.
+# Install:  cp to ~/.config/systemd/user/ && systemctl --user enable --now familymon-capture
+# This is NOT the production unit (phase 4 runs as the `familymon` system user
+# with /opt + /var/lib paths). This one runs as the developer, in their
+# graphical session, so Spectacle + KWin D-Bus have a session to talk to.
+
+[Unit]
+Description=familymon capture loop (dogfood)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/git/personal/familymon
+Environment=FAMILYMON_INTERVAL=60
+ExecStart=%h/git/personal/familymon/.venv/bin/familymonctl capture-run
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target

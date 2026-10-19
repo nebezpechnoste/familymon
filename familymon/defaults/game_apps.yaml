@@ -1,0 +1,32 @@
+# Curated, parent-extendable list for detecting games that the Steam-library
+# scan won't catch (non-Steam native games, launchers, browser-wrapped, etc.).
+# The Steam scan handles installed Steam/Proton titles automatically.
+#
+# Matched case-insensitively. window_classes match the WM_CLASS (and any
+# underscore-separated segment, for snap-style names). binaries match the
+# basename of a window process's executable.
+
+window_classes:
+  - sober                  # Roblox via the Sober flatpak (org.vinegarhq.Sober)
+  - org.vinegarhq.sober
+  - minecraft
+  - minecraft-launcher
+  - org.prismlauncher.prismlauncher
+  - lutris
+  - net.lutris.lutris
+  - org.libretro.retroarch
+  - retroarch
+  - ppsspp
+  - org.duckstation.duckstation
+  - dolphin-emu          # NOTE: the GameCube/Wii emulator, not KDE's file manager (org.kde.dolphin)
+  - pcsx2
+  - heroic               # Epic/GOG launcher
+  - com.heroicgameslauncher.hgl
+
+binaries:
+  - sober
+  - minecraft-launcher
+  - retroarch
+  - ppsspp
+  - pcsx2
+  - dolphin-emu

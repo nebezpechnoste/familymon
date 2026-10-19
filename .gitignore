@@ -1,0 +1,50 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+
+build/
+dist/
+*.egg-info/
+.eggs/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime artifacts — must never be committed.
+# /var/lib/familymon mirrors live here during dev.
+var/
+screenshots/
+# Preserved dogfood datasets / DB backups (e.g. the Phase-3 bootstrap seed).
+backups/
+# Family-specific notes (the kid's schedule, policy, dashboard access) — must
+# never be committed; the repo is slated to go public.
+private/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Local config / secrets
+.env
+.env.*
+!.env.example
+*.local.yaml
+*.local.toml
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+dist/

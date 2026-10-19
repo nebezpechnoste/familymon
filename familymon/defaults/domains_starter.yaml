@@ -1,0 +1,122 @@
+# Starter domain → Category map. Bundled with familymon for phase 1; will be
+# augmented by nightly rebuild from Toulouse + v2fly/domain-list-community in
+# phase 3 once URL extraction (DNS + AT-SPI) is wired.
+#
+# Match rules:
+#   - exact domain match, OR
+#   - any apex of the observed domain (e.g. observed `m.youtube.com` matches
+#     entry `youtube.com` because youtube.com is an apex of m.youtube.com).
+#
+# First matching category wins, in file order (top-down).
+
+video:
+  - youtube.com
+  - youtu.be
+  - vimeo.com
+  - twitch.tv
+  - netflix.com
+  - hulu.com
+  - disneyplus.com
+  - max.com
+  - hbomax.com
+  - primevideo.com
+
+messaging:
+  - web.whatsapp.com
+  - whatsapp.com
+  - messenger.com
+  - web.telegram.org
+  - discord.com
+  - app.element.io
+  - signal.org
+  - meet.google.com
+  - zoom.us
+
+social:
+  - tiktok.com          # social (not video): always a conflict during lessons
+  - twitter.com
+  - x.com
+  - reddit.com
+  - facebook.com
+  - instagram.com
+  - tumblr.com
+  - bsky.app
+  - mastodon.social
+  - pinterest.com
+  - snapchat.com
+
+games:
+  - steampowered.com
+  - store.steampowered.com
+  - epicgames.com
+  - itch.io
+  - roblox.com
+  - minecraft.net
+  - chess.com
+  - lichess.org
+  - geforce.com
+  - playstation.com
+  - xbox.com
+  - nintendo.com
+  - poki.com
+  - kongregate.com
+  - crazygames.com
+  - miniclip.com
+  # Browser-game portals seen in the wild (the domain usually appears in the
+  # tab title, e.g. "Melon Sandbox Online Game | Gameflare.com").
+  - gameflare.com
+  - y8.com
+  - friv.com
+  - coolmathgames.com
+  - armorgames.com
+  - newgrounds.com
+  - addictinggames.com
+  - silvergames.com
+  - gamepix.com
+  - lagged.com
+
+code:
+  - github.com
+  - gitlab.com
+  - bitbucket.org
+  - stackoverflow.com
+  - stackexchange.com
+  - codepen.io
+  - replit.com
+  - codesandbox.io
+  - dev.to
+  - hackernoon.com
+
+school:
+  - khanacademy.org
+  - duolingo.com
+  - coursera.org
+  - edx.org
+  - udemy.com
+  - wikipedia.org
+  - wolframalpha.com
+  - quizlet.com
+  - kahoot.it
+  - kahoot.com
+  - classroom.google.com
+  - docs.google.com           # heavily school-flavored for kids
+  - drive.google.com
+  - schoology.com
+  - canvas.instructure.com
+  # Kings InterHigh (online school): student portal, Adobe Connect lesson
+  # rooms, Canvas LMS tenant.
+  - kingsinterhigh.co.uk
+  - adobeconnect.com
+  - instructure.com
+
+productivity:
+  - mail.google.com
+  - calendar.google.com
+  - office.com
+  - notion.so
+  - obsidian.md
+  - todoist.com
+  - trello.com
+  - asana.com
+  - linear.app
+  - figma.com

@@ -1,0 +1,12 @@
+# Every 5 minutes (matches the classify cadence that produces the labels).
+# Enable:  systemctl enable --now familymon-chargeback.timer
+[Unit]
+Description=familymon periodic browser-game charge-back
+
+[Timer]
+OnActiveSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

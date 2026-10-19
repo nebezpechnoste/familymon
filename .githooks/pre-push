@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Maintainer-side leak guard for the public repo. It refuses a push if any
+# pushed commit (its message, author/committer identity, or added lines)
+# matches a pattern in the maintainer's private denylist.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Denylist: $FAMILYMON_DENYLIST, default private/publish-denylist.txt.
+# One extended regex per line; '#' comments are allowed. Matching ignores case.
+# The hook fails closed: a missing denylist blocks the push.
+set -uo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+DENY="${FAMILYMON_DENYLIST:-$ROOT/private/publish-denylist.txt}"
+if [ ! -r "$DENY" ]; then
+    echo "pre-push: denylist not found at $DENY — refusing to push." >&2
+    echo "          (set FAMILYMON_DENYLIST, or unset core.hooksPath if you're a contributor)" >&2
+    exit 1
+fi
+PATTERNS="$(mktemp)"
+trap 'rm -f "$PATTERNS"' EXIT
+grep -vE '^[[:space:]]*(#|$)' "$DENY" >"$PATTERNS"
+
+ZERO=0000000000000000000000000000000000000000
+status=0
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ "$local_sha" = "$ZERO" ] && continue            # branch deletion
+    if [ "$remote_sha" = "$ZERO" ]; then
+        range=("$local_sha" --not --remotes)          # new branch: everything not yet on a remote
+    else
+        range=("$remote_sha..$local_sha")
+    fi
+    # Message + identities + added lines only, so removing a match is allowed.
+    hits="$(git log --format='commit %H%n%an <%ae>%n%cn <%ce>%n%B' -p --no-color "${range[@]}" \
+        | grep -vE '^-' | grep -niE -f "$PATTERNS")"
+    if [ -n "$hits" ]; then
+        echo "pre-push: denylisted content in commits being pushed:" >&2
+        echo "$hits" | head -20 >&2
+        status=1
+    fi
+done
+exit $status

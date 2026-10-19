@@ -1,0 +1,15 @@
+# LAN dashboard. Requires FAMILYMON_DASH_USER / FAMILYMON_DASH_PASS —
+# put them in /etc/familymon/dashboard.env (root-owned, mode 0644 is fine for
+# a view-only dashboard; tighten if you reuse the password anywhere).
+# Optionally set FAMILYMON_DASH_BIND=0.0.0.0 there for LAN exposure.
+[Unit]
+Description=familymon dashboard
+
+[Service]
+EnvironmentFile=-/etc/familymon/dashboard.env
+ExecStart=/usr/bin/familymonctl dashboard
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,14 @@
+# Every minute, on the minute: lesson boundaries are exact (09:20:00) and
+# Chrome reloads the policy file a few seconds after it changes. The tick is
+# idempotent (writes only on change), so a missed minute self-corrects.
+# Enable:  systemctl enable --now familymon-webblock.timer
+[Unit]
+Description=familymon periodic lesson-time web block reconcile
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

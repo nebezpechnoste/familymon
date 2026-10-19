@@ -1,0 +1,87 @@
+# Brand substrings as they appear in *browser window titles*, mapped to Category.
+# Stopgap for the common case until real URL extraction (DNS + AT-SPI) lands:
+# browsers rarely put the domain in the title, but the site brand usually is
+# (e.g. "Video Name - YouTube", "Topic - Wikipedia", "Title : r/sub - Reddit").
+#
+# Matching is case-insensitive substring on the title, first match wins in file
+# order. Confidence is lower than a real domain match — substrings can false-
+# positive (a blog titled "How YouTube Works"). Avoid ambiguous short brands
+# like bare "X" (Twitter).
+
+video:
+  - youtube
+  - netflix
+  - twitch
+  - vimeo
+  - disney+
+  - hbo max
+  - prime video
+  - crunchyroll
+
+social:
+  - reddit
+  - instagram
+  - tiktok
+  - facebook
+  - tumblr
+  - pinterest
+  - mastodon
+  - bluesky
+  - snapchat
+
+messaging:
+  - discord
+  - whatsapp
+  - telegram
+  - messenger
+  - slack
+
+code:
+  - github
+  - gitlab
+  - stack overflow
+  - stackoverflow
+
+school:
+  - interhigh          # "King's InterHigh - Student portal"
+  - adobe connect      # lesson rooms
+  - wikipedia
+  - khan academy
+  - duolingo
+  - coursera
+  - quizlet
+  - wolfram
+  - google classroom
+
+productivity:
+  - google docs
+  - google sheets
+  - google slides
+  - notion
+  - trello
+
+# Browser-game portals. Most don't put their domain in the tab title ("Subway
+# Surfers - Play on Poki"), so the domain lookup misses them; the brand does
+# the job. Kept LAST on purpose: brands are first-match in file order, so a
+# YouTube video or Wikipedia article *about* games keeps its video/school label.
+games:
+  - gameflare
+  - poki
+  - crazygames
+  - crazy games
+  - y8 games
+  - friv
+  - coolmath
+  - cool math games
+  - armor games
+  - armorgames
+  - newgrounds
+  - kongregate
+  - miniclip
+  - itch.io
+  - addicting games
+  - silvergames
+  - gamepix
+  - lagged.com
+  - unblocked games
+  - online game

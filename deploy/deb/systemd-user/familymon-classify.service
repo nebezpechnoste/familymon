@@ -1,0 +1,8 @@
+# One-shot heuristic classification pass, driven by familymon-classify.timer.
+[Unit]
+Description=familymon classify pass
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/familymonctl classify
+Nice=15

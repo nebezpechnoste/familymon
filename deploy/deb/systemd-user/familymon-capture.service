@@ -1,0 +1,16 @@
+# Capture loop — must run inside the monitored user's graphical session
+# (KWin scripting + screenshots need the session D-Bus).
+# Enable per user:  systemctl --user enable --now familymon-capture.service
+[Unit]
+Description=familymon capture loop
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/familymonctl capture-run
+Restart=on-failure
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=graphical-session.target

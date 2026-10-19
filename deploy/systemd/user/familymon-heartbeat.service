@@ -1,0 +1,11 @@
+# One-shot capture-freshness check, driven by familymon-heartbeat.timer.
+# A non-zero exit (stale/dead) marks the unit "failed", a secondary visible
+# signal next to the event row.
+
+[Unit]
+Description=familymon heartbeat (dogfood)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/git/personal/familymon
+ExecStart=%h/git/personal/familymon/.venv/bin/familymonctl heartbeat-once

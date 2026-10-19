@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=familymon
+Comment=Schedule notifications
+Exec=familymonctl --help
+Icon=appointment-soon
+NoDisplay=true
+Categories=Utility;
