@@ -6,7 +6,6 @@ import pytest
 
 from familymon.policy.enforcement import (
     Change,
-    HourWindow,
     LiveState,
     PlayTimeActivity,
     PolicyError,

@@ -134,6 +134,6 @@ class SessionState:
                 if self._session_path is None:
                     return _NO_SESSION
                 return await self._read(self._session_path)
-        except Exception as e:  # noqa: BLE001 — fail-open is the whole point
+        except Exception as e:
             logger.warning("logind session query failed, capturing anyway: %s", e)
             return _FAIL_OPEN

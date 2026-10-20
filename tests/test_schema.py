@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from familymon.analyze.categories import Category
 from familymon.analyze.schema import Capture, Classification, WindowInfo
@@ -13,7 +13,7 @@ def test_category_values_are_lowercase_stable() -> None:
 def test_capture_roundtrip() -> None:
     cap = Capture(
         capture_id=1,
-        captured_at=datetime(2026, 5, 26, 10, 0, tzinfo=timezone.utc),
+        captured_at=datetime(2026, 5, 26, 10, 0, tzinfo=UTC),
         active_window=WindowInfo(wm_class="firefox", title="GitHub", pid=1234, active=True),
     )
     dumped = cap.model_dump_json()

@@ -16,13 +16,14 @@ from pathlib import Path
 
 import yaml
 
+
 @dataclass(frozen=True)
 class MessagingSkipList:
     window_classes: frozenset[str]
     title_patterns: tuple[re.Pattern[str], ...]
 
     @classmethod
-    def from_file(cls, path: Path | None = None) -> "MessagingSkipList":
+    def from_file(cls, path: Path | None = None) -> MessagingSkipList:
         # Resolved at call time so /etc/familymon and FAMILYMON_CONFIG_DIR
         # overrides are honored — this file is the privacy contract the parent
         # (and teen) edit on the deployed machine.

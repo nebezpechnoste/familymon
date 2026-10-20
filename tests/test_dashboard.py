@@ -11,7 +11,6 @@ from sqlalchemy.pool import StaticPool
 from familymon.dashboard.app import create_app
 from familymon.storage.models import Base, Capture, Classification
 
-
 _USER = "u"
 _PASS = "p"
 

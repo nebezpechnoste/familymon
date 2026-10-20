@@ -78,7 +78,7 @@ class ScheduleBlock:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ScheduleBlock":
+    def from_dict(cls, d: dict) -> ScheduleBlock:
         return cls(
             day=d["day"],
             start=_parse_hhmm(d["start"]),
@@ -223,7 +223,7 @@ class Schedule:
         secure(path, shared=True)
 
     @classmethod
-    def load(cls, path: Path) -> "Schedule":
+    def load(cls, path: Path) -> Schedule:
         raw = yaml.safe_load(path.read_text()) or {}
         blocks = [ScheduleBlock.from_dict(b) for b in raw.get("blocks") or []]
         breaks = [SchoolBreak.from_dict(b) for b in raw.get("breaks") or []]
@@ -264,11 +264,11 @@ def load_extras(path: Path) -> tuple[list[str], list[ScheduleBlock], list[School
 
 
 def apply_extras(
-    schedule: "Schedule",
+    schedule: Schedule,
     exclude_subjects: list[str],
     extra_blocks: list[ScheduleBlock],
     breaks: list[SchoolBreak] | tuple[SchoolBreak, ...] = (),
-) -> "Schedule":
+) -> Schedule:
     """Drop excluded subjects (case-insensitive), append extras not already
     present, replace the breaks, keep sorted. Re-applying to an already
     merged schedule is a no-op, which is what `schedule refresh` relies on."""

@@ -19,7 +19,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from configparser import ConfigParser, Error as ConfigParserError
+from configparser import ConfigParser
+from configparser import Error as ConfigParserError
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -164,7 +165,7 @@ class AppCategoryLookup:
         return None
 
     @classmethod
-    def from_dirs(cls, dirs: list[Path] | None = None) -> "AppCategoryLookup":
+    def from_dirs(cls, dirs: list[Path] | None = None) -> AppCategoryLookup:
         lookup = cls()
         for directory in dirs if dirs is not None else DEFAULT_APPLICATION_DIRS:
             if not directory.is_dir():

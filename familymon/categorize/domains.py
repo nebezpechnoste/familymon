@@ -17,7 +17,6 @@ import yaml
 from familymon.analyze.categories import Category
 
 
-
 def _suffix_apexes(host: str) -> list[str]:
     """All apex-form suffixes of a hostname.
 
@@ -54,7 +53,7 @@ class DomainCategoryLookup:
         return None
 
     @classmethod
-    def from_yaml(cls, path: Path | None = None) -> "DomainCategoryLookup":
+    def from_yaml(cls, path: Path | None = None) -> DomainCategoryLookup:
         from familymon.config import config_file
 
         path = path or config_file("domains_starter.yaml")

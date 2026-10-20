@@ -267,7 +267,7 @@ class KWinWaylandBackend:
         self._owns_script = script_path is None
         self._spectacle_env = _user_session_env()
 
-    async def __aenter__(self) -> "KWinWaylandBackend":
+    async def __aenter__(self) -> KWinWaylandBackend:
         self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
 
         self._sink = _WindowSink()

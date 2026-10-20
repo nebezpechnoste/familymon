@@ -14,7 +14,6 @@ import yaml
 from familymon.analyze.categories import Category
 
 
-
 class BrandTitleLookup:
     def __init__(self) -> None:
         # Ordered list of (lowercase substring, category); first match wins.
@@ -38,7 +37,7 @@ class BrandTitleLookup:
         return None
 
     @classmethod
-    def from_yaml(cls, path: Path | None = None) -> "BrandTitleLookup":
+    def from_yaml(cls, path: Path | None = None) -> BrandTitleLookup:
         # Resolved at call time so /etc/familymon and FAMILYMON_CONFIG_DIR
         # overrides are honored (see familymon.config.config_file).
         from familymon.config import config_file

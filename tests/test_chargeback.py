@@ -137,10 +137,9 @@ def test_readonly_engine_reads_real_file_and_refuses_writes(tmp_path):
     ro = sessions_for(make_readonly_engine(db))
     rows = find_chargeable_captures(ro, since_id=0, today=TODAY.date())
     assert [c for c, _ in rows] == [cid]
-    with pytest.raises(OperationalError):
-        with ro() as s:
-            s.execute(text("INSERT INTO event (at, kind) VALUES ('2026-10-05', 'x')"))
-            s.commit()
+    with pytest.raises(OperationalError), ro() as s:
+        s.execute(text("INSERT INTO event (at, kind) VALUES ('2026-10-05', 'x')"))
+        s.commit()
     assert not list(tmp_path.glob("captures.db-*")), "no journal files must appear"
 
 

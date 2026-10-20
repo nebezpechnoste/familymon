@@ -58,7 +58,7 @@ def redact_messaging_regions(
 
     try:
         img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("redact: could not open screenshot: %s", e)
         return None
 

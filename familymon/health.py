@@ -77,7 +77,7 @@ def _db_integrity(sessions: sessionmaker) -> str:
     try:
         with sessions() as s:
             rows = s.execute(text("PRAGMA quick_check(5)")).scalars().all()
-    except Exception as e:  # noqa: BLE001 — any DB-level failure IS the finding
+    except Exception as e:
         return f"{type(e).__name__}: {e}".splitlines()[0][:300]
     if rows == ["ok"]:
         return "ok"

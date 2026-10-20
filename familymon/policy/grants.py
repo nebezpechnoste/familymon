@@ -129,4 +129,4 @@ def until_today(end: time, *, now: datetime, start: time | None = None) -> tuple
     return s, end
 
 
-__all__ = ["Grant", "GrantStore", "active_windows", "until_today", "date"]
+__all__ = ["Grant", "GrantStore", "active_windows", "date", "until_today"]

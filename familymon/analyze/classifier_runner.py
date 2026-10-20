@@ -63,7 +63,7 @@ def classify_unclassified(
                     # value would silently be off by the local offset).
                     created_at=datetime.now(),
                 )
-            except Exception as e:  # noqa: BLE001 — isolate per row, by design
+            except Exception as e:
                 logger.exception("classifier failed on capture id=%s", capture.id)
                 row = ClassificationRow(
                     capture_id=capture.id,

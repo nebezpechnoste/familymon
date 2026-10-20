@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from familymon.analyze.categories import Category
 
-
 # Order matters. First matching rule wins.
 _PRIORITY: list[tuple[Category, frozenset[str]]] = [
     (Category.GAMES, frozenset({"Game"})),

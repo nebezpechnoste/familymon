@@ -173,7 +173,7 @@ class GameLibrary:
         curated_path: Path | None = None,
         home: Path | None = None,
         known_path: Path | None = None,
-    ) -> "GameLibrary":
+    ) -> GameLibrary:
         """Scan the Steam library under `home` (default: current user's) plus
         the curated list. Pass the monitored user's home when running as root,
         and `known_path` to keep every game ever seen (remember_games)."""

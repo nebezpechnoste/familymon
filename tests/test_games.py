@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from familymon.capture import games
 from familymon.capture.games import GameLibrary
 
