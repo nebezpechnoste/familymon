@@ -9,7 +9,7 @@
 
 [![KDE Plasma 6 on Wayland](https://img.shields.io/badge/KDE_Plasma_6-Wayland-1d99f3?logo=kde&logoColor=white)](docs/concepts.md)
 [![Ubuntu .deb](https://img.shields.io/badge/Ubuntu_26.04-.deb-E95420?logo=ubuntu&logoColor=white)](docs/operate/install.md)
-[![timekpr-next](https://img.shields.io/badge/enforcement-timekpr--next-555?logo=linux&logoColor=white)](https://github.com/mjasnik/timekpr-next)
+[![timekpr-next](https://img.shields.io/badge/enforcement-timekpr--next-555?logo=linux&logoColor=white)](https://launchpad.net/timekpr-next)
 [![Chrome extension](https://img.shields.io/badge/Chrome_extension-MV3%2C_force--installed-4285F4?logo=googlechrome&logoColor=white)](familymon/chrome_extension)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 
