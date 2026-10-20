@@ -22,3 +22,13 @@ jobs:
           node-version: 22
       - name: Tests (Python + extension rules via node)
         run: uv run --python 3.14 --all-extras --locked pytest -q
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: ruff check
+        run: uv run --python 3.14 --all-extras --locked ruff check familymon tests scripts
+      - name: ruff format --check
+        run: uv run --python 3.14 --all-extras --locked ruff format --check familymon tests scripts

@@ -1,0 +1,6 @@
+# Commits that only reformatted code. `git blame` skips them when configured:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub's blame view honours this file automatically.
+
+# 2026-10-20 Style: ruff format over the whole tree (no behaviour change)
+16916daa739018f859a1aa98d405f01b84c8f1ca
