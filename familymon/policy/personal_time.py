@@ -113,7 +113,7 @@ class PersonalTimeWindow:
 
     def label(self) -> str:
         tail = " (ends at the bedtime lock)" if self.ends_at_bedtime else ""
-        return f"{self.start:%H:%M}–{self.end:%H:%M}{tail}"  # noqa: RUF001 (en dash)
+        return f"{self.start:%H:%M}–{self.end:%H:%M}{tail}"
 
 
 def _local(now: datetime) -> datetime:

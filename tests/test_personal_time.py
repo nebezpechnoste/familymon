@@ -83,7 +83,7 @@ def test_window_ends_at_the_bedtime_lock_by_default():
         datetime(2026, 10, 19, 22, 0),
         True,
     )
-    assert w.label() == "20:00–22:00 (ends at the bedtime lock)"  # noqa: RUF001
+    assert w.label() == "20:00–22:00 (ends at the bedtime lock)"
     assert not w.active(datetime(2026, 10, 19, 19, 59))
     assert w.active(datetime(2026, 10, 19, 20, 0))
     assert w.active(datetime(2026, 10, 19, 21, 59, 59))

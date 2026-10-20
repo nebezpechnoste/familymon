@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from familymon.analyze.heuristics import looks_like_browser
 from familymon.storage.models import Capture, Classification
-from familymon.storage.session import make_readonly_engine  # noqa: F401 — re-export
+from familymon.storage.session import make_readonly_engine  # noqa: F401  (re-exported)
 
 logger = logging.getLogger(__name__)
 
@@ -192,14 +192,14 @@ def run_chargeback(
     if not rows:
         return ChargeResult(0, 0, state.last_capture_id, False)
 
-    seconds = int(round(len(rows) * interval_seconds))
+    seconds = round(len(rows) * interval_seconds)
     capped = seconds > max_seconds_per_run
     if capped:
         # Charge the cap now and leave the rest for the next tick: advance the
         # watermark only as far as what was charged.
         n = max(1, int(max_seconds_per_run // interval_seconds))
         rows = rows[:n]
-        seconds = int(round(len(rows) * interval_seconds))
+        seconds = round(len(rows) * interval_seconds)
 
     apply_delta(user, seconds)
 

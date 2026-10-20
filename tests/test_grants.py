@@ -66,7 +66,7 @@ def test_merge_whole_hour_absorbs_partial_and_partials_union():
 def test_apply_grants_widens_only_today_and_is_safe_at_any_hour():
     s = build_settings(_policy())
     widened = apply_grants(s, (HourWindow(22, 0, 29),), MON_2206.date())
-    assert widened.allowed_hours[0] == whole_hours(range(7, 22)) + (HourWindow(22, 0, 29),)
+    assert widened.allowed_hours[0] == (*whole_hours(range(7, 22)), HourWindow(22, 0, 29))
     assert widened.allowed_hours[1] == s.allowed_hours[1]  # Tuesday untouched
     live = LiveState(
         allowed_weekdays=(1, 2, 3, 4, 5, 6, 7),
@@ -96,7 +96,7 @@ def test_reconciler_sees_no_change_while_grant_is_live(tmp_path):
     store.add("kid", time(22, 6), time(22, 29), now=MON_2206)
     desired = apply_grants(s, active_windows(store, "kid", MON_2206), MON_2206.date())
     live_hours = list(s.allowed_hours)
-    live_hours[0] = whole_hours(range(7, 22)) + (HourWindow(22, 6, 29),)
+    live_hours[0] = (*whole_hours(range(7, 22)), HourWindow(22, 6, 29))
     live = LiveState(
         allowed_weekdays=(1, 2, 3, 4, 5, 6, 7),
         allowed_hours=tuple(live_hours),

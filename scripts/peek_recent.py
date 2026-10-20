@@ -23,7 +23,7 @@ rows = con.execute(
 ).fetchall()
 hdr = f"{'id':>4} {'disk':4} {'dup':4} {'skip':13} {'category':14} {'present':24} title"
 print(hdr)
-for cid, wm, title, on_disk, dup, skip, cat, present in reversed(rows):
+for cid, _wm, title, on_disk, dup, skip, cat, present in reversed(rows):
     present_list = json.loads(present) if present else []
     present_str = ",".join(present_list)
     print(

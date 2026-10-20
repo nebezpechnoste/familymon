@@ -160,8 +160,6 @@ def test_focused_rule_bills_only_when_the_game_tab_is_focused(sessions, tmp_path
     portal / WhatsApp focused with a game window visible. Under 'visible'
     (default) they bill; under 'focused' only the game-tab minutes do."""
     t = TODAY
-    with sessions() as s:
-        pass
 
     def cap(minute, title):
         with sessions() as s:
@@ -194,7 +192,9 @@ def test_focused_rule_bills_only_when_the_game_tab_is_focused(sessions, tmp_path
     visible = find_chargeable_captures(sessions, since_id=0, today=t.date())
     assert [c for c, _ in visible] == [game, portal, chat]
 
-    is_game = lambda title: "addicting games" in (title or "").lower()  # noqa: E731
+    def is_game(title):
+        return "addicting games" in (title or "").lower()
+
     focused = find_chargeable_captures(
         sessions, since_id=0, today=t.date(), focused_title_is_game=is_game
     )

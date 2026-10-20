@@ -260,7 +260,7 @@ def load_extras(path: Path) -> tuple[list[str], list[ScheduleBlock], list[School
             raise ValueError(
                 f"extra block ends before it starts: {b.subject} {b.day} {b.start}-{b.end}"
             )
-        b.day_index  # validates the day name
+        _ = b.day_index  # validates the day name
     breaks = [SchoolBreak.from_dict(b) for b in raw.get("breaks") or []]
     return excludes, blocks, breaks
 

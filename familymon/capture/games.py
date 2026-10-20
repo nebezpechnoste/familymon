@@ -18,6 +18,7 @@ points at the game .exe under common/<dir>/).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -113,10 +114,8 @@ def _scan_steam_game_dirs(home: Path | None = None) -> set[str]:
 def _process_path_tokens(pid: int) -> list[str]:
     """Executable path + cmdline argv for a pid, for substring/prefix matching."""
     tokens: list[str] = []
-    try:
+    with contextlib.suppress(OSError):
         tokens.append(os.readlink(f"/proc/{pid}/exe"))
-    except OSError:
-        pass
     try:
         with open(f"/proc/{pid}/cmdline", "rb") as f:
             tokens.extend(a for a in f.read().decode("utf-8", "replace").split("\0") if a)

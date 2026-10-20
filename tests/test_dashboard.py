@@ -448,7 +448,7 @@ def test_personal_time_keeps_the_category_and_hides_the_details(sessions: sessio
         and x["screenshot_skipped_reason"] is None
         for x in hidden
     )
-    assert [x for x in rows if not x["personal_time"]][0]["active_title"] == "Lecture 3 - YouTube"
+    assert next(x for x in rows if not x["personal_time"])["active_title"] == "Lecture 3 - YouTube"
     stats = c.get("/api/stats", auth=(_USER, _PASS)).json()["seconds_per_category"]
     assert stats["games"] == 120.0 and "personal_time" not in stats
 

@@ -69,7 +69,7 @@ def _normalize_day_aligned(
     days = tuple(int(d) for d in allowed_days)
     if len(limits) != len(days):
         raise TimekprError(f"{what}: {len(limits)} limits for {len(days)} allowed days")
-    by_day = dict(zip(days, (int(s) for s in limits)))
+    by_day = dict(zip(days, (int(s) for s in limits), strict=True))
     return days, tuple(by_day.get(d, 0) for d in range(1, 8))
 
 

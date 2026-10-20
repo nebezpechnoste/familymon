@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 
@@ -78,10 +79,8 @@ def _make_undumpable() -> None:
     /proc/<pid>/fd (our stdout pipe) or attach to us."""
     import ctypes
 
-    try:
+    with contextlib.suppress(OSError, AttributeError):
         ctypes.CDLL(None, use_errno=True).prctl(4, 0, 0, 0, 0)
-    except (OSError, AttributeError):
-        pass
 
 
 async def _probe_once(request: dict):
@@ -323,9 +322,8 @@ def retention_cmd(dry_run: bool, days: int | None) -> None:
         f"day(s){span}; keeping {days} days (days before {r.cutoff})"
     )
     if r.rows:
-        click.echo(
-            f"{'would clear' if dry_run else 'cleared'} the screenshot path on {r.rows} capture row(s)"
-        )
+        cleared = "would clear" if dry_run else "cleared"
+        click.echo(f"{cleared} the screenshot path on {r.rows} capture row(s)")
 
 
 def _personal_time_window(now):

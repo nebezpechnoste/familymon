@@ -14,6 +14,7 @@ Run on a Plasma 6 Wayland session:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 import tempfile
 from pathlib import Path
@@ -47,10 +48,8 @@ async def capture_active_screen(*, active_window_only: bool = False) -> bytes:
             )
         return out_path.read_bytes()
     finally:
-        try:
+        with contextlib.suppress(OSError):
             out_path.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 async def main(out_path: str) -> None:

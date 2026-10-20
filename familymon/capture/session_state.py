@@ -22,6 +22,7 @@ of a D-Bus hiccup.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from dataclasses import dataclass
@@ -87,10 +88,8 @@ class SessionState:
 
     async def close(self) -> None:
         if self._bus is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._bus.disconnect()
-            except Exception:
-                pass
             self._bus = None
 
     async def _iface(self, path: str, iface: str):

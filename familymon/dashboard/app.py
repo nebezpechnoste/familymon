@@ -215,7 +215,7 @@ def _compute_stats_from_blocks(
 
 
 def _fmt_duration(seconds: float) -> str:
-    s = int(round(seconds))
+    s = round(seconds)
     if s < 60:
         return f"{s}s"
     if s < 3600:

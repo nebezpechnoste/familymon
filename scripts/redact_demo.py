@@ -74,7 +74,7 @@ class _Sink(ServiceInterface):
         self.event = asyncio.Event()
 
     @method()
-    def Push(self, json_str: s):
+    def Push(self, json_str: "s"):  # noqa: F821, UP037 (dbus-next signature)
         self.payload = json_str
         self.event.set()
 

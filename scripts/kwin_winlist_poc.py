@@ -16,6 +16,7 @@ Run on a Plasma 6 Wayland session:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import tempfile
@@ -58,7 +59,7 @@ class WindowSink(ServiceInterface):
         self.event = asyncio.Event()
 
     @method()
-    def Push(self, json_str: s):
+    def Push(self, json_str: "s"):  # noqa: F821, UP037 (dbus-next signature)
         self.payload = json_str
         self.event.set()
 
@@ -98,10 +99,8 @@ async def main() -> None:
                 f" pid={w.get('pid')}"
             )
     finally:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.unlink(script_path)
-        except FileNotFoundError:
-            pass
         bus.disconnect()
 
 

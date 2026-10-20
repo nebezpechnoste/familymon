@@ -17,6 +17,7 @@ Two D-Bus surfaces are involved:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -333,15 +334,11 @@ class KWinWaylandBackend:
 
     async def close(self) -> None:
         if self._owns_script and self._script_path and self._script_path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 self._script_path.unlink()
-            except OSError:
-                pass
         if self._bus:
-            try:
+            with contextlib.suppress(Exception):
                 self._bus.disconnect()
-            except Exception:
-                pass
             self._bus = None
 
     async def _enumerate_windows(self) -> _WindowList:
@@ -411,10 +408,8 @@ class KWinWaylandBackend:
                 return b""
             return out_path.read_bytes()
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 out_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     async def snapshot(self, *, suppress_screenshot_reason: str | None = None) -> CaptureResult:
         result = await self._snapshot(suppress_screenshot_reason)
