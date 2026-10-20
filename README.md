@@ -1,5 +1,24 @@
 # familymon
 
+[![tests](https://github.com/nebezpechnoste/familymon/actions/workflows/tests.yml/badge.svg)](https://github.com/nebezpechnoste/familymon/actions/workflows/tests.yml)
+[![CodeQL](https://github.com/nebezpechnoste/familymon/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/nebezpechnoste/familymon/security/code-scanning)
+[![CodeRabbit reviews](https://img.shields.io/coderabbit/prs/github/nebezpechnoste/familymon?label=CodeRabbit%20reviews&labelColor=171717&color=FF570A)](https://coderabbit.ai)
+[![license](https://img.shields.io/github/license/nebezpechnoste/familymon?color=blue)](LICENSE)
+[![python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fnebezpechnoste%2Ffamilymon%2Fmain%2Fpyproject.toml&logo=python&logoColor=white)](pyproject.toml)
+[![last commit](https://img.shields.io/github/last-commit/nebezpechnoste/familymon?color=informational)](https://github.com/nebezpechnoste/familymon/commits/main)
+
+[![KDE Plasma 6 on Wayland](https://img.shields.io/badge/KDE_Plasma_6-Wayland-1d99f3?logo=kde&logoColor=white)](docs/concepts.md)
+[![Ubuntu .deb](https://img.shields.io/badge/Ubuntu_26.04-.deb-E95420?logo=ubuntu&logoColor=white)](docs/operate/install.md)
+[![timekpr-next](https://img.shields.io/badge/enforcement-timekpr--next-555?logo=linux&logoColor=white)](https://github.com/mjasnik/timekpr-next)
+[![Chrome extension](https://img.shields.io/badge/Chrome_extension-MV3%2C_force--installed-4285F4?logo=googlechrome&logoColor=white)](familymon/chrome_extension)
+[![SQLite](https://img.shields.io/badge/state-SQLite%2C_root--only-003B57?logo=sqlite&logoColor=white)](docs/reference/files-and-units.md)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+
+[![privacy](https://img.shields.io/badge/privacy-nothing_leaves_the_laptop-2ea44f)](docs/design/goals.md)
+[![disclosed](https://img.shields.io/badge/monitoring-disclosed_to_the_child-2ea44f)](#who-it-is-for)
+[![AI agent](https://img.shields.io/badge/operated_by-your_AI_agent_(AGENTS.md)-D97757?logo=anthropic&logoColor=white)](AGENTS.md)
+[![in production](https://img.shields.io/badge/in_production-1_laptop%2C_since_2026--10--01-success)](docs/design/decisions.md)
+
 Parental-control software for a child's Linux laptop (KDE Plasma 6 on Wayland). It records what is on screen, classifies the activity on the device, compares it with the school timetable, and enforces time, game and lesson-time limits. Everything stays on the laptop.
 
 Familymon has no settings UI. An AI agent acting for the parent (for example Claude Code) is the interface: the parent says what they want, in words or by pasting a timetable, and the agent turns that into configuration, previews it, applies it, verifies it and explains it back. If you are that agent, start at [`AGENTS.md`](AGENTS.md).
