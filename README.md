@@ -1,6 +1,7 @@
 # familymon
 
 [![tests](https://github.com/nebezpechnoste/familymon/actions/workflows/tests.yml/badge.svg)](https://github.com/nebezpechnoste/familymon/actions/workflows/tests.yml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/nebezpechnoste/familymon/actions/workflows/tests.yml)
 [![CodeQL](https://github.com/nebezpechnoste/familymon/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/nebezpechnoste/familymon/actions/workflows/github-code-scanning/codeql)
 [![CodeRabbit reviews](https://img.shields.io/coderabbit/prs/github/nebezpechnoste/familymon?label=CodeRabbit%20reviews&labelColor=171717&color=FF570A)](https://coderabbit.ai)
 [![license](https://img.shields.io/github/license/nebezpechnoste/familymon?color=blue)](LICENSE)
