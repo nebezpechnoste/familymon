@@ -82,8 +82,7 @@ def _table_counts(db_path: Path) -> dict[str, int]:
             names = [
                 r[0]
                 for r in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' "
-                    "AND name NOT LIKE 'sqlite_%'"
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
                 )
             ]
             for name in names:
@@ -102,12 +101,18 @@ def _recover_with_cli(damaged: Path, fresh: Path) -> bool:
     try:
         dump = subprocess.run(
             [cli, str(damaged), ".recover"],
-            capture_output=True, text=True, timeout=600,
+            capture_output=True,
+            text=True,
+            timeout=600,
         )
         if not dump.stdout.strip():
             return False
         load = subprocess.run(
-            [cli, str(fresh)], input=dump.stdout, capture_output=True, text=True, timeout=600,
+            [cli, str(fresh)],
+            input=dump.stdout,
+            capture_output=True,
+            text=True,
+            timeout=600,
         )
         if load.returncode != 0 and not fresh.exists():
             return False
@@ -169,6 +174,8 @@ def ensure_intact(db_path: Path) -> RecoveryResult | None:
     )
     logger.error(
         "capture DB recovered via %s; damaged file kept at %s; salvaged %s",
-        method, backup, result.salvaged_tables,
+        method,
+        backup,
+        result.salvaged_tables,
     )
     return result

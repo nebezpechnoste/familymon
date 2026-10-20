@@ -123,15 +123,21 @@ def _carry_root_rows(new_db: Path, old_root_db: Path) -> tuple[int, int]:
                 "INSERT INTO event (at, kind, data) SELECT at, kind, data FROM old.event"
             ).rowcount
         if "capture" in tables:
-            cap_cols = [c for c in _columns(con, "old", "capture")
-                        if c != "id" and c in _columns(con, "main", "capture")]
+            cap_cols = [
+                c
+                for c in _columns(con, "old", "capture")
+                if c != "id" and c in _columns(con, "main", "capture")
+            ]
             cls_cols = []
             if "classification" in tables:
-                cls_cols = [c for c in _columns(con, "old", "classification")
-                            if c not in ("id", "capture_id")
-                            and c in _columns(con, "main", "classification")]
+                cls_cols = [
+                    c
+                    for c in _columns(con, "old", "classification")
+                    if c not in ("id", "capture_id")
+                    and c in _columns(con, "main", "classification")
+                ]
             cap_sel = ", ".join(cap_cols)
-            for (old_id, *values) in con.execute(
+            for old_id, *values in con.execute(
                 f"SELECT id, {cap_sel} FROM old.capture ORDER BY id"
             ).fetchall():
                 new_id = con.execute(
@@ -192,8 +198,10 @@ def migrate_user_state(
     when = now or datetime.now()
     dst.mkdir(parents=True, exist_ok=True, mode=0o700)
     report = MigrationReport(user=user, source=str(src))
-    backup = Path(progress["backup_dir"]) if progress.get("backup_dir") else (
-        dst / "migrated" / f"{user}-{when:%Y%m%d-%H%M%S}"
+    backup = (
+        Path(progress["backup_dir"])
+        if progress.get("backup_dir")
+        else (dst / "migrated" / f"{user}-{when:%Y%m%d-%H%M%S}")
     )
     backup.mkdir(parents=True, exist_ok=True, mode=0o700)
     secure(backup.parent)
@@ -220,9 +228,7 @@ def migrate_user_state(
 
     if db_pending:
         if dst_db.exists():
-            report.events_carried, report.root_captures_carried = _carry_root_rows(
-                new_db, dst_db
-            )
+            report.events_carried, report.root_captures_carried = _carry_root_rows(new_db, dst_db)
             shutil.move(str(dst_db), str(backup / "captures.db.root-before-migration"))
             for side in ("-journal", "-wal", "-shm"):
                 p = dst_db.with_name(dst_db.name + side)

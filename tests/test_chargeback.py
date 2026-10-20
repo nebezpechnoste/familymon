@@ -41,8 +41,12 @@ def _cap(sessions, when, wm_class, category, game_running=False) -> int:
         s.flush()
         s.add(
             Classification(
-                capture_id=c.id, category=category, confidence=0.7,
-                evidence_text="x", source="heuristic", created_at=when,
+                capture_id=c.id,
+                category=category,
+                confidence=0.7,
+                evidence_text="x",
+                source="heuristic",
+                created_at=when,
             )
         )
         s.commit()
@@ -51,11 +55,15 @@ def _cap(sessions, when, wm_class, category, game_running=False) -> int:
 
 def test_selects_only_browser_games_without_native_game_running(sessions):
     t = TODAY
-    a = _cap(sessions, t, "google-chrome", "games")                       # charge
-    _cap(sessions, t + timedelta(minutes=1), "org.vinegarhq.Sober", "games")  # native: timekpr counts
-    _cap(sessions, t + timedelta(minutes=2), "google-chrome", "games", game_running=True)  # alt-tab mid-game
+    a = _cap(sessions, t, "google-chrome", "games")  # charge
+    _cap(
+        sessions, t + timedelta(minutes=1), "org.vinegarhq.Sober", "games"
+    )  # native: timekpr counts
+    _cap(
+        sessions, t + timedelta(minutes=2), "google-chrome", "games", game_running=True
+    )  # alt-tab mid-game
     _cap(sessions, t + timedelta(minutes=3), "google-chrome", "browsing_other")  # not a game
-    _cap(sessions, t - timedelta(days=1), "google-chrome", "games")       # yesterday
+    _cap(sessions, t - timedelta(days=1), "google-chrome", "games")  # yesterday
     b = _cap(sessions, t + timedelta(minutes=4), "firefox_firefox", "games")  # charge
 
     rows = find_chargeable_captures(sessions, since_id=0, today=t.date())
@@ -99,14 +107,18 @@ def test_failed_timekpr_call_does_not_advance_watermark(sessions, tmp_path):
 
 
 def test_per_run_cap_charges_partially_and_resumes(sessions, tmp_path):
-    ids = [_cap(sessions, TODAY + timedelta(minutes=i), "google-chrome", "games") for i in range(10)]
+    ids = [
+        _cap(sessions, TODAY + timedelta(minutes=i), "google-chrome", "games") for i in range(10)
+    ]
     state = tmp_path / "charges.json"
     calls = []
-    r = run_chargeback("kid", sessions, state, lambda u, s: calls.append(s), now=TODAY,
-                       max_seconds_per_run=240)
+    r = run_chargeback(
+        "kid", sessions, state, lambda u, s: calls.append(s), now=TODAY, max_seconds_per_run=240
+    )
     assert r.capped and calls == [240] and r.last_capture_id == ids[3]
-    r2 = run_chargeback("kid", sessions, state, lambda u, s: calls.append(s), now=TODAY,
-                        max_seconds_per_run=240)
+    r2 = run_chargeback(
+        "kid", sessions, state, lambda u, s: calls.append(s), now=TODAY, max_seconds_per_run=240
+    )
     assert calls == [240, 240] and r2.last_capture_id == ids[7]
 
 
@@ -115,8 +127,8 @@ def test_daily_tally_resets_but_watermark_persists(tmp_path):
     ChargeState(day="2026-10-03", last_capture_id=500, charged_seconds_today=900).save(state, "kid")
     st = ChargeState.load(state, "kid", datetime(2026, 10, 4).date())
     assert st.day == "2026-10-04"
-    assert st.last_capture_id == 500          # ids only grow; never recharge old rows
-    assert st.charged_seconds_today == 0      # PlayTime reset in timekpr, so do we
+    assert st.last_capture_id == 500  # ids only grow; never recharge old rows
+    assert st.charged_seconds_today == 0  # PlayTime reset in timekpr, so do we
 
 
 def test_readonly_engine_reads_real_file_and_refuses_writes(tmp_path):
@@ -150,14 +162,31 @@ def test_focused_rule_bills_only_when_the_game_tab_is_focused(sessions, tmp_path
     t = TODAY
     with sessions() as s:
         pass
+
     def cap(minute, title):
         with sessions() as s:
-            c = Capture(captured_at=t + timedelta(minutes=minute), active_wm_class="google-chrome",
-                        active_title=title, windows=[], game_running=False)
-            s.add(c); s.flush()
-            s.add(Classification(capture_id=c.id, category="games", confidence=0.6,
-                                 evidence_text="x", source="heuristic", created_at=t))
-            s.commit(); return c.id
+            c = Capture(
+                captured_at=t + timedelta(minutes=minute),
+                active_wm_class="google-chrome",
+                active_title=title,
+                windows=[],
+                game_running=False,
+            )
+            s.add(c)
+            s.flush()
+            s.add(
+                Classification(
+                    capture_id=c.id,
+                    category="games",
+                    confidence=0.6,
+                    evidence_text="x",
+                    source="heuristic",
+                    created_at=t,
+                )
+            )
+            s.commit()
+            return c.id
+
     game = cap(0, "Territory War | Addicting Games - Google Chrome")
     portal = cap(1, "King's InterHigh - Student portal - Google Chrome")
     chat = cap(2, "WhatsApp - Google Chrome")
@@ -166,12 +195,20 @@ def test_focused_rule_bills_only_when_the_game_tab_is_focused(sessions, tmp_path
     assert [c for c, _ in visible] == [game, portal, chat]
 
     is_game = lambda title: "addicting games" in (title or "").lower()  # noqa: E731
-    focused = find_chargeable_captures(sessions, since_id=0, today=t.date(), focused_title_is_game=is_game)
+    focused = find_chargeable_captures(
+        sessions, since_id=0, today=t.date(), focused_title_is_game=is_game
+    )
     assert [c for c, _ in focused] == [game]
 
     calls = []
-    r = run_chargeback("kid", sessions, tmp_path / "s.json", lambda u, s: calls.append(s), now=t,
-                       focused_title_is_game=is_game)
+    r = run_chargeback(
+        "kid",
+        sessions,
+        tmp_path / "s.json",
+        lambda u, s: calls.append(s),
+        now=t,
+        focused_title_is_game=is_game,
+    )
     assert calls == [60] and r.captures == 1
 
 
@@ -182,8 +219,9 @@ def test_replaced_database_resets_the_watermark(sessions, tmp_path):
 
     state = tmp_path / "charges.json"
     today = TODAY.date().isoformat()
-    state.write_text(json.dumps({"kid": {"day": today, "last_capture_id": 10_000,
-                                         "charged_seconds_today": 0}}))
+    state.write_text(
+        json.dumps({"kid": {"day": today, "last_capture_id": 10_000, "charged_seconds_today": 0}})
+    )
     _cap(sessions, TODAY - timedelta(minutes=2), "firefox", "games")
     deltas = []
     r = run_chargeback("kid", sessions, state, lambda u, s: deltas.append(s), now=TODAY)

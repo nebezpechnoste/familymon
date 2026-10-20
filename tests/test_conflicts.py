@@ -62,10 +62,10 @@ def test_find_conflicts_groups_contiguous_episode():
 
 def test_find_conflicts_splits_on_non_conflict_and_subject_change():
     captures = [
-        (_dt(9, 30), "games"),       # Maths conflict
+        (_dt(9, 30), "games"),  # Maths conflict
         (_dt(9, 40), "browsing_other"),  # attending class — breaks the episode
-        (_dt(9, 50), "games"),       # Maths conflict again (new episode)
-        (_dt(10, 55), "games"),      # English conflict (different subject)
+        (_dt(9, 50), "games"),  # Maths conflict again (new episode)
+        (_dt(10, 55), "games"),  # English conflict (different subject)
     ]
     episodes = find_conflicts(_SCHED, captures)
     assert [(e.block_subject, e.count) for e in episodes] == [
@@ -90,9 +90,7 @@ def test_default_categories_exclude_video_and_browsing():
 
 
 def test_streaming_video_during_lesson_is_a_conflict():
-    block = conflicting_block(
-        _SCHED, _dt(9, 30), "video", title="Funny Cats Compilation - YouTube"
-    )
+    block = conflicting_block(_SCHED, _dt(9, 30), "video", title="Funny Cats Compilation - YouTube")
     assert block is not None and block.subject == "Maths"
 
 
@@ -100,25 +98,20 @@ def test_generic_video_during_lesson_is_not_a_conflict():
     # A class stream (no recognized streaming brand) must not false-positive —
     # this is what protects "actually attending an online lesson".
     assert (
-        conflicting_block(
-            _SCHED, _dt(9, 30), "video", title="Maths Lesson - Adobe Connect"
-        )
-        is None
+        conflicting_block(_SCHED, _dt(9, 30), "video", title="Maths Lesson - Adobe Connect") is None
     )
     # And video with no title at all is not enough signal to flag.
     assert conflicting_block(_SCHED, _dt(9, 30), "video", title=None) is None
 
 
 def test_streaming_video_outside_lesson_is_not_a_conflict():
-    assert (
-        conflicting_block(_SCHED, _dt(10, 15), "video", title="Show - Netflix") is None
-    )
+    assert conflicting_block(_SCHED, _dt(10, 15), "video", title="Show - Netflix") is None
 
 
 def test_find_conflicts_flags_streaming_video_with_detail():
     captures = [
         (_dt(9, 25), "video", "Lecture - Adobe Connect"),  # attending — no conflict
-        (_dt(9, 30), "video", "Trailer - YouTube"),        # streaming — conflict
+        (_dt(9, 30), "video", "Trailer - YouTube"),  # streaming — conflict
         (_dt(9, 31), "video", "Another clip - YouTube"),
     ]
     episodes = find_conflicts(_SCHED, captures)
@@ -131,13 +124,9 @@ def test_find_conflicts_flags_streaming_video_with_detail():
 def test_entertainment_domain_video_during_lesson_is_a_conflict():
     # A video tab classified from its entertainment domain (title carries the
     # domain, e.g. "max.com", not a human brand) must still be flagged.
+    assert conflicting_block(_SCHED, _dt(9, 30), "video", title="Watch now — max.com") is not None
     assert (
-        conflicting_block(_SCHED, _dt(9, 30), "video", title="Watch now — max.com")
-        is not None
-    )
-    assert (
-        conflicting_block(_SCHED, _dt(9, 30), "video", title="Movie — disneyplus.com")
-        is not None
+        conflicting_block(_SCHED, _dt(9, 30), "video", title="Movie — disneyplus.com") is not None
     )
 
 
@@ -162,9 +151,13 @@ def test_extras_blocks_never_create_conflicts():
     school time: games during 'Maths (study)' is NOT a lesson conflict."""
     from datetime import time as dtime
 
-    sched = Schedule(blocks=[
-        ScheduleBlock("Monday", dtime(10, 15), dtime(11, 15), "Maths", category="study", notify=True),
-        ScheduleBlock("Monday", dtime(11, 45), dtime(12, 25), "English", category="school"),
-    ])
+    sched = Schedule(
+        blocks=[
+            ScheduleBlock(
+                "Monday", dtime(10, 15), dtime(11, 15), "Maths", category="study", notify=True
+            ),
+            ScheduleBlock("Monday", dtime(11, 45), dtime(12, 25), "English", category="school"),
+        ]
+    )
     assert conflicting_block(sched, _dt(10, 30), "games") is None
     assert conflicting_block(sched, _dt(12, 0), "games") is not None

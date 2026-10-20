@@ -23,9 +23,7 @@ for wm_class, title in con.execute(
         seen.add(title)
         print(f"ACTIVE  {title!r}")
 
-for (windows_json,) in con.execute(
-    "select windows from capture order by id desc limit 120"
-):
+for (windows_json,) in con.execute("select windows from capture order by id desc limit 120"):
     for w in json.loads(windows_json) if windows_json else []:
         cls = (w.get("wm_class") or "").lower()
         title = w.get("title")

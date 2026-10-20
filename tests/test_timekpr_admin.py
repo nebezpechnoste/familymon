@@ -54,8 +54,12 @@ def test_normalize_hours_from_dbus_shape():
 
 def test_normalize_hours_real_dbus_shape_with_partial_hour():
     # Exactly what getUserInformation returned after a 22[00-14] grant.
-    config = {"ALLOWED_HOURS_5": {"7": {"STARTMIN": 0, "ENDMIN": 60, "UACC": 0},
-                                  "22": {"STARTMIN": 0, "ENDMIN": 14, "UACC": 0}}}
+    config = {
+        "ALLOWED_HOURS_5": {
+            "7": {"STARTMIN": 0, "ENDMIN": 60, "UACC": 0},
+            "22": {"STARTMIN": 0, "ENDMIN": 14, "UACC": 0},
+        }
+    }
     hours = _normalize_hours(config)
     assert hours[4] == (HourWindow(7), HourWindow(22, 0, 14))
     assert [w.cli() for w in hours[4]] == ["7", "22[00-14]"]

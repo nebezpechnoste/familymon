@@ -178,17 +178,13 @@ class HeuristicClassifier:
                 present_categories=[Category.IDLE],
             )
 
-        verdicts = [
-            v for v in (self._classify_window(w) for w in windows) if v is not None
-        ]
+        verdicts = [v for v in (self._classify_window(w) for w in windows) if v is not None]
         # Trusted game detection (an installed game's process owns a window) is
         # authoritative — inject a GAMES verdict so it wins on priority, even if
         # the game's window isn't in our .desktop scan.
         if game_running:
             verdicts.append(
-                _WindowVerdict(
-                    Category.GAMES, 0.95, "installed game process", "game_process"
-                )
+                _WindowVerdict(Category.GAMES, 0.95, "installed game process", "game_process")
             )
         if not verdicts:
             return Classification(
@@ -203,9 +199,7 @@ class HeuristicClassifier:
         # Highest priority (lowest index); ties broken by higher confidence.
         best = min(verdicts, key=lambda v: (_PRIORITY_INDEX[v.category], -v.confidence))
         # All distinct categories present, priority-ordered (present[0] == best).
-        present = sorted(
-            {v.category for v in verdicts}, key=lambda c: _PRIORITY_INDEX[c]
-        )
+        present = sorted({v.category for v in verdicts}, key=lambda c: _PRIORITY_INDEX[c])
         n_visible = sum(1 for w in windows if not w.hidden)
         plural = "s" if n_visible != 1 else ""
         return Classification(

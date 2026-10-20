@@ -24,7 +24,6 @@ from dbus_next.aio import MessageBus
 from dbus_next.constants import BusType
 from dbus_next.service import ServiceInterface, method
 
-
 KWIN_SCRIPT = r"""
 var output = [];
 var wins = workspace.windowList();
@@ -59,7 +58,7 @@ class WindowSink(ServiceInterface):
         self.event = asyncio.Event()
 
     @method()
-    def Push(self, json_str: "s"):  # noqa: N802 — D-Bus convention
+    def Push(self, json_str: s):
         self.payload = json_str
         self.event.set()
 

@@ -125,7 +125,9 @@ def test_window_views_carry_desktop_membership_and_keep_old_rows_visible():
     from familymon.analyze.classifier_runner import _window_views
 
     row = Capture(
-        captured_at=datetime.now(), active_wm_class="firefox", active_title="t",
+        captured_at=datetime.now(),
+        active_wm_class="firefox",
+        active_title="t",
         windows=[
             {"wm_class": "telegram-desktop", "title": "chat", "on_current_desktop": False},
             {"wm_class": "minetest", "title": "row from before the field existed"},

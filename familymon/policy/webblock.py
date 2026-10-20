@@ -268,9 +268,7 @@ def plan_web_block(
     if block is None:
         return WebBlockPlan(
             block=None,
-            document=chrome_policy_document(
-                (), (), extension=extension, private_windows=private
-            ),
+            document=chrome_policy_document((), (), extension=extension, private_windows=private),
             blocked=blocked,
             extension=extension,
         )
@@ -288,8 +286,7 @@ def describe_extension(extension: ExtensionRef | None) -> str:
     if extension is None:
         return "open-tab closer: not packaged (this build ships no Chrome extension)"
     return (
-        f"open-tab closer: extension {extension.id} v{extension.version} "
-        f"via {extension.update_url}"
+        f"open-tab closer: extension {extension.id} v{extension.version} via {extension.update_url}"
     )
 
 
@@ -360,19 +357,50 @@ def domains_preview(domains: Iterable[str], limit: int = 12) -> str:
 # ---------------------------------------------------------------------------
 
 DEFAULT_FORBIDDEN_BROWSERS: tuple[str, ...] = (
-    "firefox", "librewolf", "waterfox", "floorp", "palemoon", "seamonkey", "basilisk",
-    "mullvad-browser", "tor-browser", "zen-browser", "zen_browser",
-    "chromium", "brave", "vivaldi", "opera", "msedge", "microsoft-edge", "thorium",
-    "epiphany", "falkon", "konqueror", "qutebrowser", "midori", "otter-browser",
+    "firefox",
+    "librewolf",
+    "waterfox",
+    "floorp",
+    "palemoon",
+    "seamonkey",
+    "basilisk",
+    "mullvad-browser",
+    "tor-browser",
+    "zen-browser",
+    "zen_browser",
+    "chromium",
+    "brave",
+    "vivaldi",
+    "opera",
+    "msedge",
+    "microsoft-edge",
+    "thorium",
+    "epiphany",
+    "falkon",
+    "konqueror",
+    "qutebrowser",
+    "midori",
+    "otter-browser",
 )
 
 DEFAULT_FORBIDDEN_FLATPAKS: tuple[str, ...] = (
-    "org.mozilla.firefox", "io.gitlab.librewolf-community", "one.ablaze.floorp",
-    "app.zen_browser.zen", "net.mullvad.mullvadbrowser", "org.torproject.torbrowser-launcher",
-    "org.chromium.chromium", "com.github.eloston.ungoogledchromium",
-    "io.github.ungoogled_software.ungoogled_chromium", "com.brave.browser",
-    "com.vivaldi.vivaldi", "com.opera.opera", "com.microsoft.edge", "org.gnome.epiphany",
-    "org.kde.falkon", "org.kde.konqueror", "org.qutebrowser.qutebrowser",
+    "org.mozilla.firefox",
+    "io.gitlab.librewolf-community",
+    "one.ablaze.floorp",
+    "app.zen_browser.zen",
+    "net.mullvad.mullvadbrowser",
+    "org.torproject.torbrowser-launcher",
+    "org.chromium.chromium",
+    "com.github.eloston.ungoogledchromium",
+    "io.github.ungoogled_software.ungoogled_chromium",
+    "com.brave.browser",
+    "com.vivaldi.vivaldi",
+    "com.opera.opera",
+    "com.microsoft.edge",
+    "org.gnome.epiphany",
+    "org.kde.falkon",
+    "org.kde.konqueror",
+    "org.qutebrowser.qutebrowser",
 )
 
 
@@ -464,7 +492,7 @@ def scan_processes(uid: int, proc_root: Path = Path("/proc")) -> list[ProcessInf
         try:
             for item in (entry / "environ").read_bytes().split(b"\0"):
                 if item.startswith(b"FLATPAK_ID="):
-                    flatpak_id = item[len(b"FLATPAK_ID="):].decode("utf-8", "replace")
+                    flatpak_id = item[len(b"FLATPAK_ID=") :].decode("utf-8", "replace")
                     break
         except OSError:
             pass

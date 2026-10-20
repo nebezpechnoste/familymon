@@ -81,16 +81,14 @@ def test_counts_and_recency(sessions: sessionmaker, tmp_path: Path):
     assert r.category_counts_24h == {"browsing_other": 2, "games": 1}
 
 
-def test_dedup_excludes_session_idle_and_messaging_skipped(
-    sessions: sessionmaker, tmp_path: Path
-):
+def test_dedup_excludes_session_idle_and_messaging_skipped(sessions: sessionmaker, tmp_path: Path):
     """Idle/locked and messaging-foreground ticks never run pHash, so they must
     not appear in the dedup denominator. Otherwise an all-idle day reports a
     misleading 0% as if dedup were broken."""
     now = datetime.now()
     # 1 eligible duplicate, 1 eligible novel, 2 ineligible (idle + msg-skip).
     _add(sessions, now - timedelta(minutes=4), same_as_prev=False)  # eligible, novel
-    _add(sessions, now - timedelta(minutes=3), same_as_prev=True)   # eligible, dup
+    _add(sessions, now - timedelta(minutes=3), same_as_prev=True)  # eligible, dup
     _add(sessions, now - timedelta(minutes=2), skipped_reason="session_locked")
     _add(sessions, now - timedelta(minutes=1), skipped_reason="messaging_app")
 
@@ -99,9 +97,7 @@ def test_dedup_excludes_session_idle_and_messaging_skipped(
     assert r.dedup_pct_24h == pytest.approx(50.0)
 
 
-def test_dedup_reports_zero_eligible_when_all_idle(
-    sessions: sessionmaker, tmp_path: Path
-):
+def test_dedup_reports_zero_eligible_when_all_idle(sessions: sessionmaker, tmp_path: Path):
     """All-idle 24h: dedup_eligible_24h == 0 so the CLI can say 'n/a' instead
     of a misleading 0% — that was the bug observed on the dogfood box after the
     laptop sat locked for a few days."""

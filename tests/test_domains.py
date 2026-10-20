@@ -43,8 +43,7 @@ def test_lookup_unrelated_domain_returns_none():
 def starter_yaml(tmp_path: Path) -> Path:
     path = tmp_path / "doms.yaml"
     path.write_text(
-        "video:\n  - youtube.com\n"
-        "games:\n  - lichess.org\n",
+        "video:\n  - youtube.com\ngames:\n  - lichess.org\n",
         encoding="utf-8",
     )
     return path

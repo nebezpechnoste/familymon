@@ -101,10 +101,7 @@ def _per_day(node: object, parse, what: str) -> list:
         raise PolicyError(f"unknown day name(s) in {what}: {sorted(unknown)}")
     if "default" not in node and set(node) != set(_DAY_NAMES):
         raise PolicyError(f"{what} needs a 'default' or all 7 days")
-    return [
-        parse(node[day]) if day in node else parse(node["default"])
-        for day in _DAY_NAMES
-    ]
+    return [parse(node[day]) if day in node else parse(node["default"]) for day in _DAY_NAMES]
 
 
 @dataclass(frozen=True, order=True)
@@ -271,9 +268,7 @@ def build_settings(
     if lockout not in _LOCKOUT_TYPES:
         raise PolicyError(f"lockout must be one of {_LOCKOUT_TYPES}: {lockout!r}")
 
-    hours = _per_day(
-        policy.get("allowed_hours"), _parse_hour_window, "allowed_hours"
-    )
+    hours = _per_day(policy.get("allowed_hours"), _parse_hour_window, "allowed_hours")
     limits = _per_day(policy.get("daily_limits"), parse_duration, "daily_limits")
 
     games = policy.get("games") or {}
@@ -287,9 +282,7 @@ def build_settings(
     )
     activities: list[PlayTimeActivity] = []
     if pt_enabled:
-        activities = steam_masks(game_dirs) + _parse_extra_masks(
-            games.get("extra_masks")
-        )
+        activities = steam_masks(game_dirs) + _parse_extra_masks(games.get("extra_masks"))
 
     return TimekprUserSettings(
         user=user,

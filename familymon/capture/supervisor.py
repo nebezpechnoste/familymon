@@ -91,9 +91,7 @@ def session_target(user: str, *, run_user_root: Path = Path("/run/user")) -> Ses
     runtime = run_user_root / str(pw.pw_uid)
     if not (runtime / "bus").exists():
         return None
-    sockets = sorted(
-        p.name for p in runtime.glob("wayland-*") if not p.name.endswith(".lock")
-    )
+    sockets = sorted(p.name for p in runtime.glob("wayland-*") if not p.name.endswith(".lock"))
     return SessionTarget(
         user=user,
         uid=pw.pw_uid,
@@ -113,9 +111,13 @@ def probe_argv(target: SessionTarget, python: str = sys.executable) -> list[str]
     the auth log every minute, and `--no-new-privs` for free."""
     return [
         "setpriv",
-        f"--reuid={target.uid}", f"--regid={target.gid}", "--init-groups",
-        "--no-new-privs", "--",
-        "env", "-i",
+        f"--reuid={target.uid}",
+        f"--regid={target.gid}",
+        "--init-groups",
+        "--no-new-privs",
+        "--",
+        "env",
+        "-i",
         f"HOME={target.home}",
         f"USER={target.user}",
         f"LOGNAME={target.user}",
@@ -125,7 +127,11 @@ def probe_argv(target: SessionTarget, python: str = sys.executable) -> list[str]
         f"DBUS_SESSION_BUS_ADDRESS=unix:path={target.runtime_dir}/bus",
         f"WAYLAND_DISPLAY={target.wayland_display}",
         "QT_QPA_PLATFORM=wayland",
-        python, "-I", "-m", "familymon.cli", "capture-probe",
+        python,
+        "-I",
+        "-m",
+        "familymon.cli",
+        "capture-probe",
     ]
 
 
@@ -267,9 +273,15 @@ async def supervised_tick(
     at = now()
 
     if result is not None and result.sink_rejected:
-        _event(sessions, "capture_tamper", {
-            "sink_rejected": result.sink_rejected, "session": session,
-        }, at)
+        _event(
+            sessions,
+            "capture_tamper",
+            {
+                "sink_rejected": result.sink_rejected,
+                "session": session,
+            },
+            at,
+        )
     if result is None or not result.window_list_ok:
         error = outcome.error or "KWin window list unavailable"
         _event(sessions, "capture_failed", {"error": error, "session": session}, at)

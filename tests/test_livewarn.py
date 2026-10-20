@@ -43,8 +43,8 @@ def test_warns_once_per_lesson_and_category_with_newest_sighting():
 
 def test_nothing_outside_a_lesson_even_with_recent_conflicts():
     rows = [(_mon(9, 59), "messaging", None)]
-    assert pending_warnings(SCHED, rows, _mon(10, 1), {}) == []       # lesson just ended
-    assert pending_warnings(SCHED, rows, _mon(10, 20), {}) == []      # self-study block
+    assert pending_warnings(SCHED, rows, _mon(10, 1), {}) == []  # lesson just ended
+    assert pending_warnings(SCHED, rows, _mon(10, 20), {}) == []  # self-study block
 
 
 def test_rows_from_a_previous_lesson_do_not_warn_in_the_next():
@@ -120,8 +120,12 @@ def test_recent_rows_joins_classified_captures_only():
         for c in (old, new):
             s.add(
                 Classification(
-                    capture_id=c.id, category="messaging", confidence=0.9, evidence_text="",
-                    source="heuristic", created_at=c.captured_at,
+                    capture_id=c.id,
+                    category="messaging",
+                    confidence=0.9,
+                    evidence_text="",
+                    source="heuristic",
+                    created_at=c.captured_at,
                 )
             )
         s.commit()
@@ -189,8 +193,12 @@ def test_recent_rows_judges_by_the_active_window_when_given_a_classifier():
         # The stored verdict is "school": a school page was visible behind it.
         s.add(
             Classification(
-                capture_id=telegram.id, category="school", confidence=0.6, evidence_text="",
-                source="heuristic", created_at=telegram.captured_at,
+                capture_id=telegram.id,
+                category="school",
+                confidence=0.6,
+                evidence_text="",
+                source="heuristic",
+                created_at=telegram.captured_at,
             )
         )
         s.commit()

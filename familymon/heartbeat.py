@@ -44,7 +44,12 @@ DEAD_THRESHOLD_SECONDS = 600.0
 # Exit code per status — non-zero marks the systemd unit "failed", which is a
 # secondary visible signal beyond the Event row.
 EXIT_CODES: dict[Status, int] = {
-    "ok": 0, "stale": 1, "dead": 2, "never": 3, "idle": 0, "watcher_down": 4,
+    "ok": 0,
+    "stale": 1,
+    "dead": 2,
+    "never": 3,
+    "idle": 0,
+    "watcher_down": 4,
 }
 
 # The heartbeat timer fires every minute; older than this, the watcher itself

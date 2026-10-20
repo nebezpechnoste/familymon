@@ -17,10 +17,7 @@ def test_messaging_wins_over_network():
 
 def test_email_classified_as_messaging():
     """Email is private content; lump under MESSAGING for retention rules."""
-    assert (
-        freedesktop_to_familymon(["Network", "Email", "Office"])
-        is Category.MESSAGING
-    )
+    assert freedesktop_to_familymon(["Network", "Email", "Office"]) is Category.MESSAGING
 
 
 def test_browser_classified_as_browsing_other():

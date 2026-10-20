@@ -103,7 +103,7 @@ async def _probe_once(request: dict):
     "--bind",
     default=None,
     help="Interface to bind. Default 127.0.0.1; override with FAMILYMON_DASH_BIND "
-         "for LAN exposure (e.g. 0.0.0.0).",
+    "for LAN exposure (e.g. 0.0.0.0).",
 )
 @click.option("--port", default=None, type=int, help="Override FAMILYMON_DASH_PORT.")
 def dashboard_cmd(bind: str | None, port: int | None) -> None:
@@ -200,13 +200,11 @@ def health_cmd() -> None:
         )
     click.echo(f"msg full-skips24h:{r.messaging_skips_24h}")
     click.echo(
-        f"screenshots:      {r.screenshots_on_disk} files, "
-        f"{r.screenshot_disk_bytes / 1e6:.1f} MB"
+        f"screenshots:      {r.screenshots_on_disk} files, {r.screenshot_disk_bytes / 1e6:.1f} MB"
     )
     if r.category_counts_24h:
         dist = ", ".join(
-            f"{cat}={n}"
-            for cat, n in sorted(r.category_counts_24h.items(), key=lambda kv: -kv[1])
+            f"{cat}={n}" for cat, n in sorted(r.category_counts_24h.items(), key=lambda kv: -kv[1])
         )
         click.echo(f"categories 24h:   {dist}")
 
@@ -215,8 +213,7 @@ def health_cmd() -> None:
         click.echo("  ! capture is stale (>3 min since last) — is capture-run alive?")
     if r.largest_gap_seconds_24h is not None and r.largest_gap_seconds_24h > 300:
         click.echo(
-            "  ! a >5 min gap exists in the last 24h "
-            "(crash, or laptop sleep — check the journal)"
+            "  ! a >5 min gap exists in the last 24h (crash, or laptop sleep — check the journal)"
         )
     if r.captures_last_24h and r.messaging_skips_24h / r.captures_last_24h > 0.10:
         click.echo(
@@ -278,16 +275,23 @@ def migrate_state_cmd(user: str | None) -> None:
         f"screenshot(s), carried {report.events_carried} root event(s); copied "
         f"{', '.join(report.copied) or 'nothing else'}"
         + (f"; kept root's {', '.join(report.kept_root)}" if report.kept_root else "")
-        + (f"; appended {report.root_captures_carried} capture(s) root took meanwhile"
-           if report.root_captures_carried else "")
+        + (
+            f"; appended {report.root_captures_carried} capture(s) root took meanwhile"
+            if report.root_captures_carried
+            else ""
+        )
         + f". Old directory kept at {report.backup_dir}"
     )
 
 
 @main.command("retention")
 @click.option("--dry-run", is_flag=True, help="Report what would be deleted; change nothing.")
-@click.option("--days", type=int, default=None,
-              help="Override retention.screenshots_days from policy.yaml (0 = never delete).")
+@click.option(
+    "--days",
+    type=int,
+    default=None,
+    help="Override retention.screenshots_days from policy.yaml (0 = never delete).",
+)
 def retention_cmd(dry_run: bool, days: int | None) -> None:
     """Delete screenshots older than the retention age (familymon-retention.timer, daily).
 
@@ -319,7 +323,9 @@ def retention_cmd(dry_run: bool, days: int | None) -> None:
         f"day(s){span}; keeping {days} days (days before {r.cutoff})"
     )
     if r.rows:
-        click.echo(f"{'would clear' if dry_run else 'cleared'} the screenshot path on {r.rows} capture row(s)")
+        click.echo(
+            f"{'would clear' if dry_run else 'cleared'} the screenshot path on {r.rows} capture row(s)"
+        )
 
 
 def _personal_time_window(now):
@@ -335,8 +341,9 @@ def _personal_time_window(now):
 
 
 @main.command("personal-time")
-@click.option("--day", default=None,
-              help="Day YYYY-MM-DD to count hidden captures for (default: today).")
+@click.option(
+    "--day", default=None, help="Day YYYY-MM-DD to count hidden captures for (default: today)."
+)
 def personal_time_cmd(day: str | None) -> None:
     """Show today's personal-time window (policy.yaml `personal_time`) and
     what it covered: captures taken without a screenshot whose app and title
@@ -377,22 +384,27 @@ def personal_time_cmd(day: str | None) -> None:
     )
     with make_session_factory(make_readonly_engine(db_path()))() as s:
         total = s.scalar(select(func.count()).where(*in_window)) or 0
-        games = s.scalar(
-            select(func.count())
-            .select_from(Capture)
-            .join(Classification, Classification.capture_id == Capture.id)
-            .where(*in_window, Classification.category == "games")
-        ) or 0
+        games = (
+            s.scalar(
+                select(func.count())
+                .select_from(Capture)
+                .join(Classification, Classification.capture_id == Capture.id)
+                .where(*in_window, Classification.category == "games")
+            )
+            or 0
+        )
     minutes = games * capture_interval_seconds() / 60
-    click.echo(
-        f"hidden captures on {target}: {total} (games: {games}, about {minutes:.0f} min)"
-    )
+    click.echo(f"hidden captures on {target}: {total} (games: {games}, about {minutes:.0f} min)")
 
 
 @main.command("events")
 @click.option("--day", default=None, help="Day YYYY-MM-DD (default: today).")
-@click.option("--kind", "kinds", multiple=True,
-              help="Only these kinds (repeatable), e.g. capture_failed, capture_tamper.")
+@click.option(
+    "--kind",
+    "kinds",
+    multiple=True,
+    help="Only these kinds (repeatable), e.g. capture_failed, capture_tamper.",
+)
 def events_cmd(day: str | None, kinds: tuple[str, ...]) -> None:
     """List the day's operational events (heartbeats excluded unless asked):
     capture failures, tamper evidence, enforcement and grant audit rows."""
@@ -578,6 +590,7 @@ def _session_notifier():
     from familymon import notify
 
     if os.geteuid() != 0:
+
         def own(summary, body, **kw) -> bool:
             notify.send(summary, body, **kw)
             return True
@@ -826,8 +839,10 @@ def enforce_show(user: str) -> None:
     days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
     for i, day in enumerate(days):
         hours = live.allowed_hours[i]
-        contiguous_whole = bool(hours) and all(w.whole for w in hours) and (
-            [w.hour for w in hours] == list(range(hours[0].hour, hours[-1].hour + 1))
+        contiguous_whole = (
+            bool(hours)
+            and all(w.whole for w in hours)
+            and ([w.hour for w in hours] == list(range(hours[0].hour, hours[-1].hour + 1)))
         )
         span = (
             f"{hours[0].hour:02d}:00-{hours[-1].hour:02d}:59"
@@ -837,10 +852,7 @@ def enforce_show(user: str) -> None:
         click.echo(f"  {day}: {span}  limit={live.daily_limits[i]}s")
     click.echo(f"playtime enabled:  {live.playtime_enabled}")
     if live.playtime_enabled:
-        click.echo(
-            "playtime limits:   "
-            + ";".join(map(str, live.playtime_daily_limits))
-        )
+        click.echo("playtime limits:   " + ";".join(map(str, live.playtime_daily_limits)))
         for a in live.playtime_activities:
             click.echo(f"  activity: {a.mask}  [{a.description}]")
 
@@ -955,7 +967,9 @@ def enforce_chargeback(dry_run: bool) -> None:
         st = ChargeState.load(state_path, user, date.today())
         rewound_watermark(st, user_sessions)
         rows = find_chargeable_captures(
-            user_sessions, since_id=st.last_capture_id, today=date.today(),
+            user_sessions,
+            since_id=st.last_capture_id,
+            today=date.today(),
             focused_title_is_game=focused_pred,
         )
         click.echo(
@@ -1009,11 +1023,17 @@ def _focused_title_is_game():
 
 @enforce_grp.command("grant")
 @click.argument("user")
-@click.option("--until", "until_", default=None, help="Extend today's allowed hours until HH:MM (inclusive).")
+@click.option(
+    "--until", "until_", default=None, help="Extend today's allowed hours until HH:MM (inclusive)."
+)
 @click.option("--from", "from_", default=None, help="Grant start HH:MM (default: now).")
-@click.option("--playtime", default=None, help="Extra game minutes today, e.g. 20m or 1h (counter adjust).")
+@click.option(
+    "--playtime", default=None, help="Extra game minutes today, e.g. 20m or 1h (counter adjust)."
+)
 @click.option("--note", default="", help="Why (kept with the grant).")
-def enforce_grant(user: str, until_: str | None, from_: str | None, playtime: str | None, note: str) -> None:
+def enforce_grant(
+    user: str, until_: str | None, from_: str | None, playtime: str | None, note: str
+) -> None:
     """One-off grant for today, applied immediately and honored by the reconciler.
 
     --until widens today's allowed-hours window (expires on its own, never
@@ -1048,15 +1068,23 @@ def enforce_grant(user: str, until_: str | None, from_: str | None, playtime: st
         # Grants only widen the window, so this is safe at any hour by
         # construction — no guard needed, no --force.
         transport.apply(changes)
-        _audit(root_sessions, Event, "grant_hours", {"user": user, "day": grant.day,
-               "start": grant.start, "end": grant.end, "note": note})
-        click.echo(f"{user}: allowed until {grant.end} today ({grant.start}-{grant.end}); "
-                   f"{len(changes)} timekpr change(s) applied")
+        _audit(
+            root_sessions,
+            Event,
+            "grant_hours",
+            {"user": user, "day": grant.day, "start": grant.start, "end": grant.end, "note": note},
+        )
+        click.echo(
+            f"{user}: allowed until {grant.end} today ({grant.start}-{grant.end}); "
+            f"{len(changes)} timekpr change(s) applied"
+        )
 
     if playtime:
         secs = parse_duration(playtime)
         transport.adjust_playtime_left(user, secs)
-        _audit(root_sessions, Event, "grant_playtime", {"user": user, "seconds": secs, "note": note})
+        _audit(
+            root_sessions, Event, "grant_playtime", {"user": user, "seconds": secs, "note": note}
+        )
         click.echo(f"{user}: +{secs}s game time today")
 
 
@@ -1096,16 +1124,23 @@ def enforce_revoke(user: str) -> None:
     changes = plan_changes(desired, live)
     verdict = plan_is_safe_now(desired, live)
     if changes and not verdict.safe:
-        click.echo(f"revoked {n} grant(s); timekpr NOT narrowed now (would cut the active session) — "
-                   "the reconciler converges once safe")
+        click.echo(
+            f"revoked {n} grant(s); timekpr NOT narrowed now (would cut the active session) — "
+            "the reconciler converges once safe"
+        )
         return
     transport.apply(changes)
     click.echo(f"revoked {n} grant(s); {len(changes)} timekpr change(s) applied")
 
 
 @enforce_grp.command("games")
-@click.option("--forget", "forget", multiple=True, metavar="DIR",
-              help="Stop treating this remembered game dir as a game (repeatable).")
+@click.option(
+    "--forget",
+    "forget",
+    multiple=True,
+    metavar="DIR",
+    help="Stop treating this remembered game dir as a game (repeatable).",
+)
 def enforce_games(forget: tuple[str, ...]) -> None:
     """List the game dirs familymon budgets (remembered + installed now).
 

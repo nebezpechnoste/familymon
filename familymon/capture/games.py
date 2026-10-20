@@ -119,9 +119,7 @@ def _process_path_tokens(pid: int) -> list[str]:
         pass
     try:
         with open(f"/proc/{pid}/cmdline", "rb") as f:
-            tokens.extend(
-                a for a in f.read().decode("utf-8", "replace").split("\0") if a
-            )
+            tokens.extend(a for a in f.read().decode("utf-8", "replace").split("\0") if a)
     except OSError:
         pass
     return tokens
@@ -184,12 +182,8 @@ class GameLibrary:
             raw = yaml.safe_load(curated_path.read_text()) or {}
         except OSError:
             raw = {}
-        classes = frozenset(
-            (c or "").strip().lower() for c in raw.get("window_classes") or []
-        )
-        binaries = frozenset(
-            (b or "").strip().lower() for b in raw.get("binaries") or []
-        )
+        classes = frozenset((c or "").strip().lower() for c in raw.get("window_classes") or [])
+        binaries = frozenset((b or "").strip().lower() for b in raw.get("binaries") or [])
         dirs = _scan_steam_game_dirs(home)
         if known_path is not None:
             dirs = remember_games(known_path, dirs)

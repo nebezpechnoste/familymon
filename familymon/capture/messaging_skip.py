@@ -32,9 +32,7 @@ class MessagingSkipList:
         path = path or config_file("messaging_apps.yaml")
         raw = yaml.safe_load(path.read_text())
         classes = frozenset((c or "").strip().lower() for c in raw.get("window_classes") or [])
-        patterns = tuple(
-            re.compile(p, re.IGNORECASE) for p in raw.get("title_patterns") or []
-        )
+        patterns = tuple(re.compile(p, re.IGNORECASE) for p in raw.get("title_patterns") or [])
         return cls(window_classes=classes, title_patterns=patterns)
 
     def should_skip(self, wm_class: str | None, title: str | None) -> bool:

@@ -71,9 +71,7 @@ def redact_messaging_regions(
     # scaling of the logical layout and our single-factor mapping would misplace
     # rectangles — never leak, fall back to a full skip.
     if max(sx, sy) > 0 and abs(sx - sy) / max(sx, sy) > _SCALE_TOLERANCE:
-        logger.warning(
-            "redact: non-uniform scale (sx=%.4f sy=%.4f); falling back to skip", sx, sy
-        )
+        logger.warning("redact: non-uniform scale (sx=%.4f sy=%.4f); falling back to skip", sx, sy)
         return None
 
     # Separate "a messaging window is visible" from "we have geometry to hide
@@ -84,11 +82,7 @@ def redact_messaging_regions(
     # via a `width > 0 and height > 0` filter — leaked it whenever it was the
     # only messaging window (empty set -> original image returned) or sat
     # alongside a second, mappable one (partial redaction returned as success).
-    messaging = [
-        w
-        for w in windows
-        if not w.hidden and skip_list.should_skip(w.wm_class, w.title)
-    ]
+    messaging = [w for w in windows if not w.hidden and skip_list.should_skip(w.wm_class, w.title)]
     if not messaging:
         # The caller only invokes us when a messaging window is present, but
         # stay defensive: nothing to hide, return the image unchanged.

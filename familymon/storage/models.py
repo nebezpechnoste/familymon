@@ -80,9 +80,7 @@ class Classification(Base):
 
     capture: Mapped[Capture] = relationship(back_populates="classification")
 
-    __table_args__ = (
-        Index("ix_classification_category_created", "category", "created_at"),
-    )
+    __table_args__ = (Index("ix_classification_category_created", "category", "created_at"),)
 
 
 class Event(Base):

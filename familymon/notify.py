@@ -25,11 +25,16 @@ def notify_argv(
 ) -> list[str]:
     return [
         "notify-send",
-        "-a", "familymon",
-        "-h", f"string:desktop-entry:{DESKTOP_ENTRY}",
-        "-u", urgency,
-        "-i", icon,
-        "-t", str(timeout_ms),
+        "-a",
+        "familymon",
+        "-h",
+        f"string:desktop-entry:{DESKTOP_ENTRY}",
+        "-u",
+        urgency,
+        "-i",
+        icon,
+        "-t",
+        str(timeout_ms),
         summary,
         body,
     ]
@@ -64,7 +69,10 @@ def send_as(
     if not os.path.exists(f"{runtime}/bus"):
         return False
     argv = [
-        "runuser", "-u", user, "--",
+        "runuser",
+        "-u",
+        user,
+        "--",
         "env",
         f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus",
         f"XDG_RUNTIME_DIR={runtime}",

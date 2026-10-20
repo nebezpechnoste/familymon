@@ -231,10 +231,18 @@ def test_conflict_flagged_when_block_straddles_lesson_start(sessions: sessionmak
         ]
     ).save(schedule_path())
     # Same wm_class + category -> one merged block spanning 09:59 to 10:01.
-    _seed(sessions, now.replace(hour=9, minute=59, second=0, microsecond=0),
-          active_wm_class="minetest", category="games")
-    _seed(sessions, now.replace(hour=10, minute=1, second=0, microsecond=0),
-          active_wm_class="minetest", category="games")
+    _seed(
+        sessions,
+        now.replace(hour=9, minute=59, second=0, microsecond=0),
+        active_wm_class="minetest",
+        category="games",
+    )
+    _seed(
+        sessions,
+        now.replace(hour=10, minute=1, second=0, microsecond=0),
+        active_wm_class="minetest",
+        category="games",
+    )
 
     c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
     r = c.get("/", auth=(_USER, _PASS))
@@ -298,9 +306,7 @@ def test_bad_date_returns_400(client: TestClient):
     assert r.status_code == 400
 
 
-def test_empty_day_renders_without_error(
-    sessions: sessionmaker, today_iso: str
-):
+def test_empty_day_renders_without_error(sessions: sessionmaker, today_iso: str):
     # No seed data
     app = create_app(session_factory=sessions, user=_USER, pwd=_PASS)
     c = TestClient(app)
@@ -309,9 +315,7 @@ def test_empty_day_renders_without_error(
     assert "No captures recorded" in r.text
 
 
-def test_create_app_requires_credentials(
-    sessions: sessionmaker, monkeypatch: pytest.MonkeyPatch
-):
+def test_create_app_requires_credentials(sessions: sessionmaker, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("FAMILYMON_DASH_USER", raising=False)
     monkeypatch.delenv("FAMILYMON_DASH_PASS", raising=False)
     with pytest.raises(RuntimeError, match="FAMILYMON_DASH_USER"):
@@ -400,22 +404,36 @@ def test_personal_time_keeps_the_category_and_hides_the_details(sessions: sessio
     """Policy `personal_time`: the parent sees that it was games or video and
     for how long, never which app or which title. Page and API alike."""
     at = datetime.now().replace(hour=20, minute=0, second=0, microsecond=0)
-    _seed(sessions, at - timedelta(hours=1), category="video",
-          active_wm_class="firefox_firefox", active_title="Lecture 3 - YouTube")
-    for i, (cat, title) in enumerate([
-        ("games", "Hungry Shark - Poki"), ("games", "Hungry Shark - Poki"),
-        ("video", "Secret Movie - YouTube"),
-    ]):
-        _seed(sessions, at + timedelta(minutes=i), category=cat,
-              active_wm_class="google-chrome_google-chrome", active_title=title,
-              screenshot_skipped_reason="personal_time", personal_time=True)
+    _seed(
+        sessions,
+        at - timedelta(hours=1),
+        category="video",
+        active_wm_class="firefox_firefox",
+        active_title="Lecture 3 - YouTube",
+    )
+    for i, (cat, title) in enumerate(
+        [
+            ("games", "Hungry Shark - Poki"),
+            ("games", "Hungry Shark - Poki"),
+            ("video", "Secret Movie - YouTube"),
+        ]
+    ):
+        _seed(
+            sessions,
+            at + timedelta(minutes=i),
+            category=cat,
+            active_wm_class="google-chrome_google-chrome",
+            active_title=title,
+            screenshot_skipped_reason="personal_time",
+            personal_time=True,
+        )
     c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
     r = c.get("/", auth=(_USER, _PASS))
     assert r.status_code == 200
     assert "Poki" not in r.text and "Secret Movie" not in r.text
     assert "google-chrome" not in r.text and "personal_time" not in r.text.split("<body>")[1]
-    assert "Lecture 3 - YouTube" in r.text          # before the window: shown as usual
-    assert r.text.count("pt-tag\">personal time") == 2  # one games block, one video block
+    assert "Lecture 3 - YouTube" in r.text  # before the window: shown as usual
+    assert r.text.count('pt-tag">personal time') == 2  # one games block, one video block
     assert "Personal time 20:00–20:02" in r.text and "no screenshots" in r.text
     assert "games · 2m" in r.text and "video · 2m" in r.text  # categories still add up
 
@@ -423,9 +441,13 @@ def test_personal_time_keeps_the_category_and_hides_the_details(sessions: sessio
     hidden = [x for x in rows if x["personal_time"]]
     assert len(hidden) == 3
     assert {x["category"] for x in hidden} == {"games", "video"}
-    assert all(x["active_title"] is None and x["active_wm_class"] is None
-               and x["evidence"] is None and x["screenshot_skipped_reason"] is None
-               for x in hidden)
+    assert all(
+        x["active_title"] is None
+        and x["active_wm_class"] is None
+        and x["evidence"] is None
+        and x["screenshot_skipped_reason"] is None
+        for x in hidden
+    )
     assert [x for x in rows if not x["personal_time"]][0]["active_title"] == "Lecture 3 - YouTube"
     stats = c.get("/api/stats", auth=(_USER, _PASS)).json()["seconds_per_category"]
     assert stats["games"] == 120.0 and "personal_time" not in stats
@@ -435,24 +457,34 @@ def test_banner_shows_not_logged_in_from_the_watcher(sessions: sessionmaker):
     """The root watcher knows nobody is logged in; a quiet timeline then is
     not 'Capture DOWN'."""
     _seed(sessions, datetime.now() - timedelta(hours=2), category="browsing_other")
-    _event(sessions, "heartbeat", {"status": "idle", "session": "none",
-                                   "age_seconds": 7200, "last_capture_at": None})
+    _event(
+        sessions,
+        "heartbeat",
+        {"status": "idle", "session": "none", "age_seconds": 7200, "last_capture_at": None},
+    )
     c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
     r = c.get("/", auth=(_USER, _PASS))
     assert "heartbeat idle" in r.text and "Not logged in" in r.text
 
 
 def test_banner_says_when_capture_is_down_during_a_session(sessions: sessionmaker):
-    _event(sessions, "heartbeat", {"status": "dead", "session": "active",
-                                   "age_seconds": 900, "last_capture_at": None})
+    _event(
+        sessions,
+        "heartbeat",
+        {"status": "dead", "session": "active", "age_seconds": 900, "last_capture_at": None},
+    )
     c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
     r = c.get("/", auth=(_USER, _PASS))
     assert "Capture DOWN" in r.text and "while the session is active" in r.text
 
 
 def test_banner_flags_a_silent_watcher(sessions: sessionmaker):
-    _event(sessions, "heartbeat", {"status": "ok", "session": "active"},
-           at=datetime.now() - timedelta(hours=1))
+    _event(
+        sessions,
+        "heartbeat",
+        {"status": "ok", "session": "active"},
+        at=datetime.now() - timedelta(hours=1),
+    )
     c = TestClient(create_app(session_factory=sessions, user=_USER, pwd=_PASS))
     r = c.get("/", auth=(_USER, _PASS))
     assert "Heartbeat watcher not running" in r.text

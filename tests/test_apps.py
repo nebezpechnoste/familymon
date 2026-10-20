@@ -46,9 +46,7 @@ def test_lookup_falls_through_to_exec_basename(tmp_path: Path):
         Categories="Chat;Network;InstantMessaging;",
     )
     lookup = AppCategoryLookup.from_dirs([tmp_path])
-    assert (
-        lookup.lookup("telegram-desktop_telegram-desktop") is Category.MESSAGING
-    )
+    assert lookup.lookup("telegram-desktop_telegram-desktop") is Category.MESSAGING
 
 
 def test_lookup_via_lowercased_name(tmp_path: Path):
@@ -84,9 +82,7 @@ def test_entries_without_categories_are_skipped(tmp_path: Path):
 
 
 def test_unknown_wm_class_returns_none(tmp_path: Path):
-    _write_desktop(
-        tmp_path, "x", Name="X", Exec="x", Categories="Game;"
-    )
+    _write_desktop(tmp_path, "x", Name="X", Exec="x", Categories="Game;")
     lookup = AppCategoryLookup.from_dirs([tmp_path])
     assert lookup.lookup("definitely-not-installed") is None
     assert lookup.lookup(None) is None

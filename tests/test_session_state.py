@@ -17,16 +17,12 @@ def test_inactive_suppresses_as_inactive():
 
 
 def test_locked_suppresses_as_locked():
-    assert (
-        SessionStatus(found=True, active=True, locked=True).suppress_reason()
-        == "session_locked"
-    )
+    assert SessionStatus(found=True, active=True, locked=True).suppress_reason() == "session_locked"
 
 
 def test_inactive_takes_precedence_over_locked():
     assert (
-        SessionStatus(found=True, active=False, locked=True).suppress_reason()
-        == "session_inactive"
+        SessionStatus(found=True, active=False, locked=True).suppress_reason() == "session_inactive"
     )
 
 

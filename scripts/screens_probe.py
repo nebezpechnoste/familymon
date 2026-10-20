@@ -65,7 +65,7 @@ class _Sink(ServiceInterface):
         self.event = asyncio.Event()
 
     @method()
-    def Push(self, json_str: "s"):  # noqa: N802
+    def Push(self, json_str: s):
         self.payload = json_str
         self.event.set()
 
@@ -107,7 +107,10 @@ def _spectacle_dims() -> tuple[int, int]:
         }
         subprocess.run(
             ["spectacle", "--background", "--nonotify", "--fullscreen", "--output", str(out)],
-            env=env, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=env,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         with Image.open(io.BytesIO(out.read_bytes())) as im:
             return im.size

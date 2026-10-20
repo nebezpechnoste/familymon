@@ -126,8 +126,9 @@ def test_latest_heartbeat_reads_the_watchers_verdict(sessions: sessionmaker):
     now = datetime(2026, 5, 26, 10, 0, 0)
     assert latest_heartbeat(sessions, now=now) is None
     _add_capture(sessions, now - timedelta(hours=3))
-    record_heartbeat(sessions, check_capture_freshness(
-        sessions, now=now - timedelta(seconds=30), session="none"))
+    record_heartbeat(
+        sessions, check_capture_freshness(sessions, now=now - timedelta(seconds=30), session="none")
+    )
     hb = latest_heartbeat(sessions, now=now)
     assert hb.status == "idle" and hb.session == "none"
 
@@ -136,8 +137,10 @@ def test_latest_heartbeat_flags_a_dead_watcher(sessions: sessionmaker):
     from familymon.heartbeat import latest_heartbeat
 
     now = datetime(2026, 5, 26, 10, 0, 0)
-    record_heartbeat(sessions, check_capture_freshness(
-        sessions, now=now - timedelta(minutes=20), session="active"))
+    record_heartbeat(
+        sessions,
+        check_capture_freshness(sessions, now=now - timedelta(minutes=20), session="active"),
+    )
     assert latest_heartbeat(sessions, now=now).status == "watcher_down"
 
 
@@ -146,9 +149,13 @@ def test_capture_problems_counts_the_days_events(sessions: sessionmaker):
 
     day = datetime(2026, 5, 26)
     with sessions() as s:
-        for kind, hour in (("capture_failed", 9), ("capture_failed", 10),
-                           ("capture_tamper", 11), ("heartbeat", 11),
-                           ("capture_failed", 25)):
+        for kind, hour in (
+            ("capture_failed", 9),
+            ("capture_failed", 10),
+            ("capture_tamper", 11),
+            ("heartbeat", 11),
+            ("capture_failed", 25),
+        ):
             s.add(Event(at=day + timedelta(hours=hour), kind=kind, data={}))
         s.commit()
     got = capture_problems(sessions, day, day + timedelta(days=1))

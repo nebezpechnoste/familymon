@@ -14,7 +14,6 @@ Run on a Plasma 6 Wayland session:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import tempfile
 from pathlib import Path

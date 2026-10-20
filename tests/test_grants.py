@@ -21,9 +21,13 @@ MON_2206 = datetime(2026, 10, 5, 22, 6)  # the real case: grant made at 22:06 fo
 
 def _policy():
     return {
-        "user": "kid", "lockout": "suspend",
-        "allowed_hours": {"default": {"start": 7, "end": 21}, "saturday": {"start": 8, "end": 22},
-                          "sunday": {"start": 8, "end": 22}},
+        "user": "kid",
+        "lockout": "suspend",
+        "allowed_hours": {
+            "default": {"start": 7, "end": 21},
+            "saturday": {"start": 8, "end": 22},
+            "sunday": {"start": 8, "end": 22},
+        },
         "daily_limits": {"default": "unlimited"},
         "games": {"enabled": False},
     }
@@ -32,22 +36,31 @@ def _policy():
 def test_hour_window_cli_and_covers():
     assert HourWindow(22).cli() == "22"
     assert HourWindow(22, 0, 29).cli() == "22[00-29]"
-    assert HourWindow(22, 0, 29).covers(time(22, 6)) and not HourWindow(22, 0, 29).covers(time(22, 30))
+    assert HourWindow(22, 0, 29).covers(time(22, 6)) and not HourWindow(22, 0, 29).covers(
+        time(22, 30)
+    )
     assert HourWindow(22).covers(time(22, 59))
 
 
 def test_grant_windows_span_hours():
     assert Grant("kid", "2026-10-05", "22:00", "22:29", "x").windows() == (HourWindow(22, 0, 29),)
     assert Grant("kid", "2026-10-05", "21:40", "23:10", "x").windows() == (
-        HourWindow(21, 40, 59), HourWindow(22), HourWindow(23, 0, 10))
+        HourWindow(21, 40, 59),
+        HourWindow(22),
+        HourWindow(23, 0, 10),
+    )
     with pytest.raises(ValueError):
         Grant("kid", "2026-10-05", "23:00", "22:00", "x").windows()
 
 
 def test_merge_whole_hour_absorbs_partial_and_partials_union():
-    merged = merge_hour_windows(whole_hours(range(20, 22)), (HourWindow(21, 40, 59), HourWindow(22, 0, 29)))
+    merged = merge_hour_windows(
+        whole_hours(range(20, 22)), (HourWindow(21, 40, 59), HourWindow(22, 0, 29))
+    )
     assert merged == (HourWindow(20), HourWindow(21), HourWindow(22, 0, 29))
-    assert merge_hour_windows((HourWindow(22, 0, 10),), (HourWindow(22, 20, 29),)) == (HourWindow(22, 0, 29),)
+    assert merge_hour_windows((HourWindow(22, 0, 10),), (HourWindow(22, 20, 29),)) == (
+        HourWindow(22, 0, 29),
+    )
 
 
 def test_apply_grants_widens_only_today_and_is_safe_at_any_hour():
@@ -56,10 +69,15 @@ def test_apply_grants_widens_only_today_and_is_safe_at_any_hour():
     assert widened.allowed_hours[0] == whole_hours(range(7, 22)) + (HourWindow(22, 0, 29),)
     assert widened.allowed_hours[1] == s.allowed_hours[1]  # Tuesday untouched
     live = LiveState(
-        allowed_weekdays=(1, 2, 3, 4, 5, 6, 7), allowed_hours=s.allowed_hours,
-        daily_limits=s.daily_limits, lockout="suspend", playtime_enabled=False,
-        playtime_allowed_weekdays=(1, 2, 3, 4, 5, 6, 7), playtime_daily_limits=(0,) * 7,
-        playtime_activities=(), active_session_count=1,
+        allowed_weekdays=(1, 2, 3, 4, 5, 6, 7),
+        allowed_hours=s.allowed_hours,
+        daily_limits=s.daily_limits,
+        lockout="suspend",
+        playtime_enabled=False,
+        playtime_allowed_weekdays=(1, 2, 3, 4, 5, 6, 7),
+        playtime_daily_limits=(0,) * 7,
+        playtime_activities=(),
+        active_session_count=1,
     )
     # At 22:06 with a session active: applying the widened window is safe
     # (22:06 is inside 22[00-29]); the plan emits exactly the Monday hours.
@@ -80,10 +98,15 @@ def test_reconciler_sees_no_change_while_grant_is_live(tmp_path):
     live_hours = list(s.allowed_hours)
     live_hours[0] = whole_hours(range(7, 22)) + (HourWindow(22, 6, 29),)
     live = LiveState(
-        allowed_weekdays=(1, 2, 3, 4, 5, 6, 7), allowed_hours=tuple(live_hours),
-        daily_limits=s.daily_limits, lockout="suspend", playtime_enabled=False,
-        playtime_allowed_weekdays=(1, 2, 3, 4, 5, 6, 7), playtime_daily_limits=(0,) * 7,
-        playtime_activities=(), active_session_count=1,
+        allowed_weekdays=(1, 2, 3, 4, 5, 6, 7),
+        allowed_hours=tuple(live_hours),
+        daily_limits=s.daily_limits,
+        lockout="suspend",
+        playtime_enabled=False,
+        playtime_allowed_weekdays=(1, 2, 3, 4, 5, 6, 7),
+        playtime_daily_limits=(0,) * 7,
+        playtime_activities=(),
+        active_session_count=1,
     )
     assert plan_changes(desired, live) == []
 

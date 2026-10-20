@@ -245,7 +245,7 @@ async def test_run_probe_reports_exit_code_and_stderr():
 
 @pytest.mark.asyncio
 async def test_run_probe_rejects_garbage():
-    out = await run_probe(_py("print('{\"not\": \"a capture\"}')"), {})
+    out = await run_probe(_py('print(\'{"not": "a capture"}\')'), {})
     assert out.result is None and "unreadable" in out.error
 
 
@@ -258,13 +258,24 @@ async def test_run_probe_kills_a_hung_probe():
 def test_probe_argv_scrubs_the_environment_and_isolates_python():
     t = SessionTarget("kid", 1001, 1001, "/home/kid", "/run/user/1001", "wayland-1")
     argv = probe_argv(t, python="/opt/familymon/venv/bin/python3")
-    assert argv[:6] == ["setpriv", "--reuid=1001", "--regid=1001", "--init-groups",
-                        "--no-new-privs", "--"]
+    assert argv[:6] == [
+        "setpriv",
+        "--reuid=1001",
+        "--regid=1001",
+        "--init-groups",
+        "--no-new-privs",
+        "--",
+    ]
     assert argv[6:8] == ["env", "-i"]
     assert "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus" in argv
     assert "WAYLAND_DISPLAY=wayland-1" in argv
-    assert argv[-5:] == ["/opt/familymon/venv/bin/python3", "-I", "-m", "familymon.cli",
-                         "capture-probe"]
+    assert argv[-5:] == [
+        "/opt/familymon/venv/bin/python3",
+        "-I",
+        "-m",
+        "familymon.cli",
+        "capture-probe",
+    ]
     assert not any(a.startswith(("PYTHONPATH", "LD_PRELOAD")) for a in argv)
 
 

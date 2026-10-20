@@ -96,8 +96,13 @@ def test_group_name_round_trips_and_is_optional(tmp_path):
 
     s = Schedule(
         blocks=[
-            ScheduleBlock("Tuesday", dtime(9, 20), dtime(10, 0), "Cycle Testing",
-                          group_name="10L CYCLE TEST AC-26/27"),
+            ScheduleBlock(
+                "Tuesday",
+                dtime(9, 20),
+                dtime(10, 0),
+                "Cycle Testing",
+                group_name="10L CYCLE TEST AC-26/27",
+            ),
             ScheduleBlock("Monday", dtime(9, 20), dtime(10, 0), "Assembly"),  # no group
         ]
     )
@@ -117,12 +122,27 @@ def test_title_keywords_are_distinct_group_codes_only():
 
     s = Schedule(
         blocks=[
-            ScheduleBlock("Tuesday", dtime(9, 20), dtime(10, 0), "Cycle Testing",
-                          group_name="10L CYCLE TEST AC-26/27"),
-            ScheduleBlock("Friday", dtime(9, 20), dtime(10, 0), "Cycle Testing",
-                          group_name="10L CYCLE TEST AC-26/27"),  # same code, other day
-            ScheduleBlock("Monday", dtime(16, 15), dtime(16, 55), "Economics",
-                          group_name="10RA ECO EXP 11 AC-26/27"),
+            ScheduleBlock(
+                "Tuesday",
+                dtime(9, 20),
+                dtime(10, 0),
+                "Cycle Testing",
+                group_name="10L CYCLE TEST AC-26/27",
+            ),
+            ScheduleBlock(
+                "Friday",
+                dtime(9, 20),
+                dtime(10, 0),
+                "Cycle Testing",
+                group_name="10L CYCLE TEST AC-26/27",
+            ),  # same code, other day
+            ScheduleBlock(
+                "Monday",
+                dtime(16, 15),
+                dtime(16, 55),
+                "Economics",
+                group_name="10RA ECO EXP 11 AC-26/27",
+            ),
             ScheduleBlock("Monday", dtime(9, 20), dtime(10, 0), "Assembly"),
         ]
     )
@@ -144,13 +164,15 @@ def test_block_at_category_filter_and_notify_round_trip(tmp_path):
 
     from familymon.policy.schedule import Schedule
 
-    s = Schedule(blocks=[
-        _blk("Monday", (10, 15), (11, 15), "Maths", category="study", notify=True),
-        _blk("Monday", (11, 45), (12, 25), "English Language"),
-    ])
+    s = Schedule(
+        blocks=[
+            _blk("Monday", (10, 15), (11, 15), "Maths", category="study", notify=True),
+            _blk("Monday", (11, 45), (12, 25), "English Language"),
+        ]
+    )
     at_study = datetime(2026, 10, 5, 10, 30)  # Monday
     assert s.block_at(at_study).subject == "Maths"
-    assert s.block_at(at_study, category="school") is None   # self-study isn't school
+    assert s.block_at(at_study, category="school") is None  # self-study isn't school
     assert s.block_at(datetime(2026, 10, 5, 12, 0), category="school").subject == "English Language"
     p = tmp_path / "s.yaml"
     s.save(p)
@@ -165,15 +187,17 @@ def test_starting_at_tolerance_and_notify_flag():
 
     from familymon.policy.schedule import Schedule
 
-    s = Schedule(blocks=[
-        _blk("Tuesday", (12, 0), (13, 0), "Workout", category="routine", notify=True),
-        _blk("Tuesday", (12, 0), (12, 40), "Lesson"),  # not flagged
-    ])
+    s = Schedule(
+        blocks=[
+            _blk("Tuesday", (12, 0), (13, 0), "Workout", category="routine", notify=True),
+            _blk("Tuesday", (12, 0), (12, 40), "Lesson"),  # not flagged
+        ]
+    )
     tue = datetime(2026, 10, 6, 12, 1)
     assert [b.subject for b in s.starting_at(tue)] == ["Workout"]
-    assert s.starting_at(datetime(2026, 10, 6, 11, 59)) == []           # not yet
-    assert s.starting_at(datetime(2026, 10, 6, 12, 3)) == []            # past tolerance
-    assert s.starting_at(datetime(2026, 10, 7, 12, 0)) == []            # wrong day
+    assert s.starting_at(datetime(2026, 10, 6, 11, 59)) == []  # not yet
+    assert s.starting_at(datetime(2026, 10, 6, 12, 3)) == []  # past tolerance
+    assert s.starting_at(datetime(2026, 10, 7, 12, 0)) == []  # wrong day
 
 
 def test_extras_exclude_and_merge(tmp_path):
@@ -189,10 +213,22 @@ blocks:
 """)
     excludes, blocks, breaks = load_extras(extras)
     assert breaks == []
-    data = {"timetableLessons": [
-        {"lessonDay": "Monday", "observedStartTime": "09:20", "observedEndTime": "10:00", "subjectName": "Assembly"},
-        {"lessonDay": "Monday", "observedStartTime": "10:05", "observedEndTime": "10:45", "subjectName": "Discovery UK"},
-    ]}
+    data = {
+        "timetableLessons": [
+            {
+                "lessonDay": "Monday",
+                "observedStartTime": "09:20",
+                "observedEndTime": "10:00",
+                "subjectName": "Assembly",
+            },
+            {
+                "lessonDay": "Monday",
+                "observedStartTime": "10:05",
+                "observedEndTime": "10:45",
+                "subjectName": "Discovery UK",
+            },
+        ]
+    }
     s = apply_extras(parse_kingsinterhigh_week(data, exclude_subjects=excludes), excludes, blocks)
     assert [(b.day, b.subject, b.category, b.notify) for b in s.blocks] == [
         ("Monday", "Assembly", "school", False),

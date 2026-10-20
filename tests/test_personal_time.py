@@ -35,26 +35,33 @@ def test_a_bare_rule_applies_to_every_day():
 
 
 def test_per_day_rules_with_a_day_off_and_an_explicit_end():
-    rules = parse_personal_time({"personal_time": {
-        "default": {"from": "20:00"},
-        "saturday": False,
-        "sunday": {"from": "19:30", "until": "21:00"},
-    }})
+    rules = parse_personal_time(
+        {
+            "personal_time": {
+                "default": {"from": "20:00"},
+                "saturday": False,
+                "sunday": {"from": "19:30", "until": "21:00"},
+            }
+        }
+    )
     assert rules[0] == PersonalTimeRule(time(20, 0))
     assert rules[5] is None
     assert rules[6] == PersonalTimeRule(time(19, 30), time(21, 0))
 
 
-@pytest.mark.parametrize("bad", [
-    {"personal_time": "20:00"},                                  # not a mapping
-    {"personal_time": {"default": {"from": 20}}},                # unquoted time
-    {"personal_time": {"default": {"from": "25:00"}}},
-    {"personal_time": {"default": {"from": "20:00", "until": "19:00"}}},
-    {"personal_time": {"default": {"from": "20:00", "til": "21:00"}}},  # typo
-    {"personal_time": {"default": {"until": "21:00"}}},          # no from
-    {"personal_time": {"monday": {"from": "20:00"}}},            # no default
-    {"personal_time": {"default": True}},
-])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"personal_time": "20:00"},  # not a mapping
+        {"personal_time": {"default": {"from": 20}}},  # unquoted time
+        {"personal_time": {"default": {"from": "25:00"}}},
+        {"personal_time": {"default": {"from": "20:00", "until": "19:00"}}},
+        {"personal_time": {"default": {"from": "20:00", "til": "21:00"}}},  # typo
+        {"personal_time": {"default": {"until": "21:00"}}},  # no from
+        {"personal_time": {"monday": {"from": "20:00"}}},  # no default
+        {"personal_time": {"default": True}},
+    ],
+)
 def test_rejected_shapes(bad):
     with pytest.raises(PolicyError):
         parse_personal_time(bad)
@@ -72,7 +79,9 @@ def test_window_ends_at_the_bedtime_lock_by_default():
     rules = parse_personal_time({"personal_time": {"from": "20:00"}})
     w = window_for(rules, MON, HOURS_7_21)
     assert (w.start, w.end, w.ends_at_bedtime) == (
-        datetime(2026, 10, 19, 20, 0), datetime(2026, 10, 19, 22, 0), True
+        datetime(2026, 10, 19, 20, 0),
+        datetime(2026, 10, 19, 22, 0),
+        True,
     )
     assert w.label() == "20:00–22:00 (ends at the bedtime lock)"  # noqa: RUF001
     assert not w.active(datetime(2026, 10, 19, 19, 59))
@@ -125,16 +134,40 @@ def test_current_window_reads_policy_and_grants(tmp_path):
 
     # Saturday's bedtime is later; and a grant tonight extends the lock and the window.
     assert end(datetime(2026, 10, 24, 21, 0)) == datetime(2026, 10, 24, 23, 0)
-    grants.write_text(json.dumps({"grants": [{
-        "user": "kid", "day": "2026-10-19", "start": "22:00", "end": "22:29",
-        "created_at": "2026-10-19T19:00:00", "note": "",
-    }]}))
+    grants.write_text(
+        json.dumps(
+            {
+                "grants": [
+                    {
+                        "user": "kid",
+                        "day": "2026-10-19",
+                        "start": "22:00",
+                        "end": "22:29",
+                        "created_at": "2026-10-19T19:00:00",
+                        "note": "",
+                    }
+                ]
+            }
+        )
+    )
     assert end() == datetime(2026, 10, 19, 22, 30)
     # Another user's grant changes nothing.
-    grants.write_text(json.dumps({"grants": [{
-        "user": "other", "day": "2026-10-19", "start": "22:00", "end": "22:29",
-        "created_at": "2026-10-19T19:00:00", "note": "",
-    }]}))
+    grants.write_text(
+        json.dumps(
+            {
+                "grants": [
+                    {
+                        "user": "other",
+                        "day": "2026-10-19",
+                        "start": "22:00",
+                        "end": "22:29",
+                        "created_at": "2026-10-19T19:00:00",
+                        "note": "",
+                    }
+                ]
+            }
+        )
+    )
     assert end() == datetime(2026, 10, 19, 22, 0)
 
 
@@ -172,14 +205,14 @@ def test_notice_once_per_day_only_when_delivered(state):
 
     send, calls = _sender(False)
     at = datetime(2026, 10, 19, 20, 5)
-    assert _notify_personal_time(at, send) == 0            # nobody logged in: retry later
+    assert _notify_personal_time(at, send) == 0  # nobody logged in: retry later
     assert calls and not (state / "personal_time_notified.json").exists()
 
     send, calls = _sender(True)
     assert _notify_personal_time(at + timedelta(minutes=30), send) == 1
     assert "Until 22:00" in calls[0][1] and "game time" in calls[0][1].lower()
     assert json.loads((state / "personal_time_notified.json").read_text())["day"] == "2026-10-19"
-    assert _notify_personal_time(at + timedelta(minutes=31), send) == 0   # already told today
+    assert _notify_personal_time(at + timedelta(minutes=31), send) == 0  # already told today
     assert _notify_personal_time(datetime(2026, 10, 20, 20, 5), send) == 1  # a new day
 
 

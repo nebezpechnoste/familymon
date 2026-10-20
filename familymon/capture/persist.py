@@ -66,9 +66,7 @@ class CapturePersistence:
             cap_id = row.id
 
             should_save = (
-                self._save_screenshots
-                and result.screenshot_bytes is not None
-                and not same_as_prev
+                self._save_screenshots and result.screenshot_bytes is not None and not same_as_prev
             )
             if should_save:
                 # mkdir's `mode` only applies to the leaf, and a root that

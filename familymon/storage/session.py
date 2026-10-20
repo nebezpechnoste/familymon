@@ -31,14 +31,10 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
 def _migrate(engine: Engine) -> None:
     with engine.begin() as conn:
         for table, columns in _ADDED_COLUMNS.items():
-            existing = {
-                row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")
-            }
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
             for col, decl in columns.items():
                 if col not in existing:
-                    conn.exec_driver_sql(
-                        f"ALTER TABLE {table} ADD COLUMN {col} {decl}"
-                    )
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 def make_engine(db_path: Path) -> Engine:

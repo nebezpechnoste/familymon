@@ -39,8 +39,11 @@ def _row(sessions, path: Path | None, age_days: int) -> int:
     with sessions() as s:
         c = Capture(
             captured_at=datetime.combine(TODAY - timedelta(days=age_days), datetime.min.time()),
-            active_wm_class="x", active_title="t", windows=[],
-            screenshot_path=str(path) if path else None, screenshot_phash="abcd",
+            active_wm_class="x",
+            active_title="t",
+            windows=[],
+            screenshot_path=str(path) if path else None,
+            screenshot_phash="abcd",
         )
         s.add(c)
         s.commit()
@@ -56,7 +59,7 @@ def _paths(sessions) -> list[str | None]:
 def tree(tmp_path, sessions):
     root = tmp_path / "screenshots"
     old = _day(root, 100, 2)
-    edge = _day(root, 90, 1)       # exactly keep_days old: dated ON the cutoff, kept
+    edge = _day(root, 90, 1)  # exactly keep_days old: dated ON the cutoff, kept
     fresh = _day(root, 89, 1)
     odd = root / "notes"
     odd.mkdir()
@@ -74,7 +77,7 @@ def test_prunes_old_days_clears_rows_and_records_an_event(sessions, tree):
     assert r.cutoff == TODAY - timedelta(days=90)
     assert (r.files, r.bytes, r.dirs, r.rows, r.days) == (2, 200, 1, 2, ["2026-07-11"])
     assert not (tree / "2026-07-11").exists()
-    assert (tree / "2026-07-21" / "900.png").exists()   # on the cutoff day: kept
+    assert (tree / "2026-07-21" / "900.png").exists()  # on the cutoff day: kept
     assert (tree / "2026-07-22" / "890.png").exists()
     assert (tree / "notes" / "keep.txt").exists()
     paths = _paths(sessions)
@@ -139,9 +142,11 @@ def test_screenshot_days_policy_parsing():
     assert screenshot_days({"retention": None}) == 90
     assert screenshot_days({"retention": {"screenshots_days": 30}}) == 30
     assert screenshot_days({"retention": {"screenshots_days": 0}}) == 0
-    for bad in ({"retention": {"screenshots_days": -1}},
-                {"retention": {"screenshots_days": "90"}},
-                {"retention": {"screenshots_days": True}},
-                {"retention": "90"}):
+    for bad in (
+        {"retention": {"screenshots_days": -1}},
+        {"retention": {"screenshots_days": "90"}},
+        {"retention": {"screenshots_days": True}},
+        {"retention": "90"},
+    ):
         with pytest.raises(ValueError):
             screenshot_days(bad)

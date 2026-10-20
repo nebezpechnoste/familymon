@@ -373,8 +373,8 @@ class KWinWaylandBackend:
         await self._unload_script()
         if raw is None:
             logger.warning(
-                "KWin scripting timed out without an accepted payload "
-                "(rejected pushes so far: %d)", self._sink.rejected
+                "KWin scripting timed out without an accepted payload (rejected pushes so far: %d)",
+                self._sink.rejected,
             )
             return empty
 
@@ -430,8 +430,7 @@ class KWinWaylandBackend:
         captured_at = datetime.now().astimezone()
 
         messaging_present = any(
-            not w.hidden and self._skip_list.should_skip(w.wm_class, w.title)
-            for w in windows
+            not w.hidden and self._skip_list.should_skip(w.wm_class, w.title) for w in windows
         )
 
         common = {
@@ -449,8 +448,7 @@ class KWinWaylandBackend:
                 **common,
                 window_list_ok=False,
                 screenshot_bytes=None,
-                screenshot_skipped_reason=suppress_screenshot_reason
-                or "window_list_unavailable",
+                screenshot_skipped_reason=suppress_screenshot_reason or "window_list_unavailable",
             )
 
         # Caller-driven suppression (session backgrounded / locked) takes
@@ -482,8 +480,6 @@ class KWinWaylandBackend:
                     screenshot_skipped_reason="messaging_app",
                 )
             png, any_redacted = redacted
-            return CaptureResult(
-                **common, screenshot_bytes=png, screenshot_redacted=any_redacted
-            )
+            return CaptureResult(**common, screenshot_bytes=png, screenshot_redacted=any_redacted)
 
         return CaptureResult(**common, screenshot_bytes=screenshot)

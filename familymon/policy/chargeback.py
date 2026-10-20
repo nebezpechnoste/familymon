@@ -101,7 +101,9 @@ def rewound_watermark(state: ChargeState, sessions: sessionmaker) -> bool:
         return False
     logger.warning(
         "chargeback: watermark %d is past the newest capture id %d (database "
-        "replaced?); starting over for today", state.last_capture_id, top,
+        "replaced?); starting over for today",
+        state.last_capture_id,
+        top,
     )
     state.last_capture_id = 0
     return True
@@ -206,7 +208,10 @@ def run_chargeback(
     state.save(state_path, user)
     logger.info(
         "chargeback: %s browser-game capture(s) -> -%ss PlayTime for %s (today total %ss)",
-        len(rows), seconds, user, state.charged_seconds_today,
+        len(rows),
+        seconds,
+        user,
+        state.charged_seconds_today,
     )
     return ChargeResult(len(rows), seconds, state.last_capture_id, capped)
 

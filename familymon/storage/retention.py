@@ -105,11 +105,14 @@ def prune_screenshots(
             result.bytes += size
 
         with sessions() as s:
-            rows_here = s.scalar(
-                select(func.count()).where(
-                    Capture.screenshot_path.startswith(prefix, autoescape=True)
+            rows_here = (
+                s.scalar(
+                    select(func.count()).where(
+                        Capture.screenshot_path.startswith(prefix, autoescape=True)
+                    )
                 )
-            ) or 0
+                or 0
+            )
             if not dry_run and rows_here:
                 s.execute(
                     update(Capture)
@@ -148,6 +151,9 @@ def prune_screenshots(
             s.commit()
         logger.info(
             "retention: deleted %d screenshot(s), %.1f MB, from %d day(s) before %s",
-            result.files, result.bytes / 1e6, len(result.days), cutoff,
+            result.files,
+            result.bytes / 1e6,
+            len(result.days),
+            cutoff,
         )
     return result

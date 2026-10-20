@@ -15,8 +15,12 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_extension_rules_under_node():
     r = subprocess.run(
         # Files, not the directory: older node treats a directory as a module.
-        ["node", "--test", "--test-reporter=tap",
-         *sorted(str(p) for p in (ROOT / "tests" / "js").glob("*.test.mjs"))],
+        [
+            "node",
+            "--test",
+            "--test-reporter=tap",
+            *sorted(str(p) for p in (ROOT / "tests" / "js").glob("*.test.mjs")),
+        ],
         capture_output=True,
         text=True,
         timeout=60,

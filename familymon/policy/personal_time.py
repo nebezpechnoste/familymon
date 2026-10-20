@@ -74,9 +74,7 @@ def _is_off(node: object) -> bool:
 def _parse_rule(node: object) -> PersonalTimeRule | None:
     if _is_off(node):
         return None
-    shape_ok = (
-        isinstance(node, dict) and "from" in node and not set(node) - {"from", "until"}
-    )
+    shape_ok = isinstance(node, dict) and "from" in node and not set(node) - {"from", "until"}
     if not shape_ok:
         raise PolicyError(
             'personal_time entries are {from: "HH:MM"}, '

@@ -90,9 +90,7 @@ def test_build_settings_shapes():
 
 
 def test_build_settings_games_disabled_zeroes_playtime():
-    s = build_settings(
-        _policy(games={"enabled": False}), game_dirs={"/x/common/Doom"}
-    )
+    s = build_settings(_policy(games={"enabled": False}), game_dirs={"/x/common/Doom"})
     assert not s.playtime_enabled
     assert s.playtime_daily_limits == (0,) * 7
     assert s.playtime_activities == ()
@@ -307,9 +305,7 @@ def test_unsafe_when_new_window_excludes_current_hour_with_session():
     """Pins the incident: setting hours 7-21 at 22:35 with the kid logged in
     terminated their session. The guard must catch exactly this."""
     s = build_settings(_policy())  # Saturday window 8-22
-    live = LiveState(
-        **{**_OPEN_LIVE.__dict__, "active_session_count": 1}
-    )
+    live = LiveState(**{**_OPEN_LIVE.__dict__, "active_session_count": 1})
     verdict = plan_is_safe_now(s, live, now=_at(23))  # Sat 23:30, outside 8-22
     assert not verdict.safe
     assert any("excludes the current time" in r for r in verdict.reasons)

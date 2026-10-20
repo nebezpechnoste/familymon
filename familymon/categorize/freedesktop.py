@@ -32,9 +32,7 @@ _PRIORITY: list[tuple[Category, frozenset[str]]] = [
     (Category.SCHOOL, frozenset({"Education", "Languages", "Literature", "Science"})),
     (
         Category.VIDEO,
-        frozenset(
-            {"Player", "Video", "TV", "VideoConference", "AudioVideo", "Music"}
-        ),
+        frozenset({"Player", "Video", "TV", "VideoConference", "AudioVideo", "Music"}),
     ),
     (
         Category.PRODUCTIVITY,

@@ -1,6 +1,6 @@
 """Print the most recent captures + classifications. Dev inspection helper.
 
-    uv run python scripts/peek_recent.py [N]
+uv run python scripts/peek_recent.py [N]
 """
 
 from __future__ import annotations

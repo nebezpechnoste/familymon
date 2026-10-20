@@ -68,9 +68,7 @@ def _normalize_day_aligned(
     both onto a fixed 7-day (Mon..Sun) axis, 0 for disallowed days."""
     days = tuple(int(d) for d in allowed_days)
     if len(limits) != len(days):
-        raise TimekprError(
-            f"{what}: {len(limits)} limits for {len(days)} allowed days"
-        )
+        raise TimekprError(f"{what}: {len(limits)} limits for {len(days)} allowed days")
     by_day = dict(zip(days, (int(s) for s in limits)))
     return days, tuple(by_day.get(d, 0) for d in range(1, 8))
 
@@ -148,9 +146,7 @@ class LiveTimekpr:
             playtime_enabled=bool(config.get("PLAYTIME_ENABLED", False)),
             playtime_allowed_weekdays=pt_days,
             playtime_daily_limits=pt_limits,
-            playtime_activities=_normalize_activities(
-                config.get("PLAYTIME_ACTIVITIES")
-            ),
+            playtime_activities=_normalize_activities(config.get("PLAYTIME_ACTIVITIES")),
             active_session_count=_count_user_sessions(user),
         )
 
@@ -176,9 +172,7 @@ class LiveTimekpr:
         for change in changes:
             argv = ["timekpra", *change.cli_args]
             logger.info("applying %s: %s", change.setting, " ".join(argv))
-            proc = subprocess.run(
-                argv, capture_output=True, text=True, timeout=30
-            )
+            proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
             # timekpra exits 0 even for some errors; it prints failures to
             # stdout/stderr. Trust the exit code first, then scan output.
             output = (proc.stdout + proc.stderr).lower()

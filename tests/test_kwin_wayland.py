@@ -53,10 +53,14 @@ async def test_messaging_window_is_redacted_not_dropped_single_screen():
                 wm_class="telegram-desktop_telegram-desktop",
                 title="news",
                 active=False,
-                x=0, y=0, width=50, height=100,
+                x=0,
+                y=0,
+                width=50,
+                height=100,
             ),
-            WindowSnapshot(wm_class="firefox_firefox", title="x", active=True,
-                           x=50, y=0, width=50, height=100),
+            WindowSnapshot(
+                wm_class="firefox_firefox", title="x", active=True, x=50, y=0, width=50, height=100
+            ),
         ],
         logical=(100.0, 100.0),
         screens=1,
@@ -84,10 +88,18 @@ async def test_messaging_redacts_on_uniform_multi_monitor():
     backend = _make_backend(_skip("telegram-desktop"))
     backend._enumerate_windows.return_value = _winlist(
         [
-            WindowSnapshot(wm_class="telegram-desktop_telegram-desktop", title="news",
-                           active=False, x=0, y=0, width=50, height=100),
-            WindowSnapshot(wm_class="firefox_firefox", title="x", active=True,
-                           x=50, y=0, width=50, height=100),
+            WindowSnapshot(
+                wm_class="telegram-desktop_telegram-desktop",
+                title="news",
+                active=False,
+                x=0,
+                y=0,
+                width=50,
+                height=100,
+            ),
+            WindowSnapshot(
+                wm_class="firefox_firefox", title="x", active=True, x=50, y=0, width=50, height=100
+            ),
         ],
         logical=(100.0, 100.0),
         screens=2,
@@ -108,8 +120,15 @@ async def test_messaging_non_uniform_scale_falls_back_to_full_skip():
     backend = _make_backend(_skip("telegram-desktop"))
     backend._enumerate_windows.return_value = _winlist(
         [
-            WindowSnapshot(wm_class="telegram-desktop_telegram-desktop", title="news",
-                           active=True, x=0, y=0, width=50, height=50),
+            WindowSnapshot(
+                wm_class="telegram-desktop_telegram-desktop",
+                title="news",
+                active=True,
+                x=0,
+                y=0,
+                width=50,
+                height=50,
+            ),
         ],
         logical=(100.0, 50.0),  # vs a 100x100 image -> sx=1, sy=2, non-uniform
     )
@@ -127,8 +146,11 @@ async def test_messaging_non_uniform_scale_falls_back_to_full_skip():
 async def test_no_messaging_keeps_full_screenshot():
     backend = _make_backend(_skip("telegram-desktop"))
     backend._enumerate_windows.return_value = _winlist(
-        [WindowSnapshot(wm_class="firefox_firefox", title="x", active=True,
-                        x=0, y=0, width=100, height=100)]
+        [
+            WindowSnapshot(
+                wm_class="firefox_firefox", title="x", active=True, x=0, y=0, width=100, height=100
+            )
+        ]
     )
     shot = _png()
     backend._spectacle.return_value = shot
@@ -148,10 +170,19 @@ async def test_minimized_messaging_window_is_not_present():
     backend = _make_backend(_skip("telegram-desktop"))
     backend._enumerate_windows.return_value = _winlist(
         [
-            WindowSnapshot(wm_class="firefox_firefox", title="x", active=True,
-                           x=0, y=0, width=100, height=100),
-            WindowSnapshot(wm_class="telegram-desktop_telegram-desktop", title="news",
-                           active=False, minimized=True, x=0, y=0, width=50, height=100),
+            WindowSnapshot(
+                wm_class="firefox_firefox", title="x", active=True, x=0, y=0, width=100, height=100
+            ),
+            WindowSnapshot(
+                wm_class="telegram-desktop_telegram-desktop",
+                title="news",
+                active=False,
+                minimized=True,
+                x=0,
+                y=0,
+                width=50,
+                height=100,
+            ),
         ]
     )
     shot = _png()
@@ -269,18 +300,26 @@ def test_window_sink_handler_replies_identically_and_ignores_other_calls():
     sink = _WindowSink()
     sink.arm("abc123", KWIN)
     forged = Message(
-        destination="org.familymon.WindowSink", path="/sink",
-        interface="org.familymon.WindowSink", member="Push",
-        signature="s", body=[_payload("abc123")], serial=7,
+        destination="org.familymon.WindowSink",
+        path="/sink",
+        interface="org.familymon.WindowSink",
+        member="Push",
+        signature="s",
+        body=[_payload("abc123")],
+        serial=7,
     )
     forged.sender = ":1.99"
     reply = sink.handle(forged)
     assert reply is not None and reply.message_type == MessageType.METHOD_RETURN
     assert sink.rejected == 1
     other = Message(
-        destination="org.familymon.WindowSink", path="/elsewhere",
-        interface="org.familymon.WindowSink", member="Push",
-        signature="s", body=["x"], serial=8,
+        destination="org.familymon.WindowSink",
+        path="/elsewhere",
+        interface="org.familymon.WindowSink",
+        member="Push",
+        signature="s",
+        body=["x"],
+        serial=8,
     )
     assert sink.handle(other) is None
 
@@ -314,22 +353,51 @@ def test_parse_marks_windows_on_other_desktops_and_activities_hidden():
     from familymon.capture.kwin_wayland import _parse_window_list
 
     raw = {
-        "currentDesktop": "d2", "currentActivity": "a1", "vw": 1, "vh": 1, "screens": 1,
+        "currentDesktop": "d2",
+        "currentActivity": "a1",
+        "vw": 1,
+        "vh": 1,
+        "screens": 1,
         "windows": [
-            {"caption": "chat", "resourceClass": "telegram-desktop", "desktops": ["d1"],
-             "onAllDesktops": False, "activities": ["a1"]},
-            {"caption": "here", "resourceClass": "firefox", "desktops": ["d2"],
-             "onAllDesktops": False, "activities": ["a1"]},
-            {"caption": "everywhere", "resourceClass": "konsole", "desktops": [],
-             "onAllDesktops": True, "activities": []},
-            {"caption": "other activity", "resourceClass": "slack", "desktops": ["d2"],
-             "onAllDesktops": False, "activities": ["a2"]},
+            {
+                "caption": "chat",
+                "resourceClass": "telegram-desktop",
+                "desktops": ["d1"],
+                "onAllDesktops": False,
+                "activities": ["a1"],
+            },
+            {
+                "caption": "here",
+                "resourceClass": "firefox",
+                "desktops": ["d2"],
+                "onAllDesktops": False,
+                "activities": ["a1"],
+            },
+            {
+                "caption": "everywhere",
+                "resourceClass": "konsole",
+                "desktops": [],
+                "onAllDesktops": True,
+                "activities": [],
+            },
+            {
+                "caption": "other activity",
+                "resourceClass": "slack",
+                "desktops": ["d2"],
+                "onAllDesktops": False,
+                "activities": ["a2"],
+            },
             {"caption": "old kwin", "resourceClass": "x"},
         ],
     }
     by = {w.title: w.on_current_desktop for w in _parse_window_list(raw).windows}
-    assert by == {"chat": False, "here": True, "everywhere": True,
-                  "other activity": False, "old kwin": True}
+    assert by == {
+        "chat": False,
+        "here": True,
+        "everywhere": True,
+        "other activity": False,
+        "old kwin": True,
+    }
 
 
 @pytest.mark.asyncio
@@ -340,10 +408,18 @@ async def test_messaging_window_on_another_virtual_desktop_is_not_redacted():
     backend = _make_backend(_skip("telegram-desktop"))
     backend._enumerate_windows.return_value = _winlist(
         [
-            WindowSnapshot(wm_class="telegram-desktop_telegram-desktop", title="news",
-                           on_current_desktop=False, x=0, y=0, width=50, height=100),
-            WindowSnapshot(wm_class="firefox_firefox", title="x", active=True,
-                           x=50, y=0, width=50, height=100),
+            WindowSnapshot(
+                wm_class="telegram-desktop_telegram-desktop",
+                title="news",
+                on_current_desktop=False,
+                x=0,
+                y=0,
+                width=50,
+                height=100,
+            ),
+            WindowSnapshot(
+                wm_class="firefox_firefox", title="x", active=True, x=50, y=0, width=50, height=100
+            ),
         ]
     )
     png = _png()

@@ -122,7 +122,9 @@ def test_blocklist_is_union_of_categories_minus_exemptions():
 
 def test_extra_and_allow_domains():
     cfg = WebBlockConfig(
-        enabled=True, categories=("games",), extra_domains=("example.com", "poki.com"),
+        enabled=True,
+        categories=("games",),
+        extra_domains=("example.com", "poki.com"),
         allow_domains=("roblox.com",),
     )
     blocked, allowed = build_blocklist(cfg, TABLE)
@@ -253,16 +255,16 @@ def _proc(exe, cmdline="", flatpak_id=None):
     "exe, expected",
     [
         ("/snap/firefox/8995/usr/lib/firefox/firefox", "firefox"),
-        ("/home/kid/Downloads/firefox/firefox-bin", "firefox"),           # tarball
-        ("/home/kid/tor-browser/Browser/firefox.real", "tor-browser"),   # first component wins
-        ("/tmp/.mount_FirefoXYZ/usr/lib/firefox/firefox", "firefox"),    # AppImage
+        ("/home/kid/Downloads/firefox/firefox-bin", "firefox"),  # tarball
+        ("/home/kid/tor-browser/Browser/firefox.real", "tor-browser"),  # first component wins
+        ("/tmp/.mount_FirefoXYZ/usr/lib/firefox/firefox", "firefox"),  # AppImage
         ("/snap/chromium/3000/usr/lib/chromium-browser/chrome", "chromium"),
         ("/opt/brave.com/brave/brave", "brave"),
         ("/opt/microsoft/msedge/msedge", "msedge"),
         ("/usr/lib/x86_64-linux-gnu/opera/opera", "opera"),
         ("/opt/google/chrome/chrome", None),  # Chrome: governed by the policy
-        ("/usr/bin/zenity", None),                                        # not "zen"
-        ("/home/kid/Downloads/cooperation/game", None),                   # not "opera"
+        ("/usr/bin/zenity", None),  # not "zen"
+        ("/home/kid/Downloads/cooperation/game", None),  # not "opera"
         ("/usr/bin/python3", None),
     ],
 )
@@ -390,7 +392,11 @@ def test_document_keeps_extension_installed_but_idle_outside_lessons():
     doc = chrome_policy_document((), (), extension=EXT)
     assert doc["ExtensionInstallForcelist"] == [EXT.forcelist_entry]
     assert doc["3rdparty"]["extensions"]["a" * 32] == {
-        "active": False, "blocked": [], "allowed": [], "subject": "", "until": ""
+        "active": False,
+        "blocked": [],
+        "allowed": [],
+        "subject": "",
+        "until": "",
     }
     assert "URLBlocklist" not in doc
 

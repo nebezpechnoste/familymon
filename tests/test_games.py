@@ -15,8 +15,7 @@ def _make_steam(tmp_path: Path) -> Path:
         '"libraryfolders"\n{\n  "0"\n  {\n    "path"\t\t"' + str(root) + '"\n  }\n}\n'
     )
     (sapps / "appmanifest_111.acf").write_text(
-        '"AppState"\n{\n  "appid"\t"111"\n  "name"\t"Cool Game"\n'
-        '  "installdir"\t"CoolGame"\n}\n'
+        '"AppState"\n{\n  "appid"\t"111"\n  "name"\t"Cool Game"\n  "installdir"\t"CoolGame"\n}\n'
     )
     # A tool (Proton) — must be excluded from the trusted game set.
     (sapps / "appmanifest_222.acf").write_text(

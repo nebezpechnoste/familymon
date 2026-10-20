@@ -111,17 +111,11 @@ def compute_health(sessions: sessionmaker, screenshots_dir: Path) -> HealthRepor
     with sessions() as s:
         total = s.scalar(select(func.count()).select_from(Capture)) or 0
         last_1h = (
-            s.scalar(
-                select(func.count()).select_from(Capture).where(Capture.captured_at >= h1)
-            )
+            s.scalar(select(func.count()).select_from(Capture).where(Capture.captured_at >= h1))
             or 0
         )
         last_24h = (
-            s.scalar(
-                select(func.count())
-                .select_from(Capture)
-                .where(Capture.captured_at >= h24)
-            )
+            s.scalar(select(func.count()).select_from(Capture).where(Capture.captured_at >= h24))
             or 0
         )
         last_ts = s.scalar(select(func.max(Capture.captured_at)))
@@ -191,9 +185,7 @@ def compute_health(sessions: sessionmaker, screenshots_dir: Path) -> HealthRepor
             )
             or 0
         )
-        dedup_pct = (
-            (dup_24h / dedup_eligible_24h * 100.0) if dedup_eligible_24h else 0.0
-        )
+        dedup_pct = (dup_24h / dedup_eligible_24h * 100.0) if dedup_eligible_24h else 0.0
 
         messaging_skips_24h = (
             s.scalar(

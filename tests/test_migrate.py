@@ -26,8 +26,15 @@ def _make_db(path: Path, *, captures: int, shots_dir: Path | None, events: list[
     with sessions() as s:
         for i in range(captures):
             shot = str(shots_dir / "2026-10-18" / f"{i + 1}.png") if shots_dir else None
-            s.add(Capture(captured_at=WHEN, active_wm_class="x", active_title=f"t{i}",
-                          windows=[], screenshot_path=shot))
+            s.add(
+                Capture(
+                    captured_at=WHEN,
+                    active_wm_class="x",
+                    active_title=f"t{i}",
+                    windows=[],
+                    screenshot_path=shot,
+                )
+            )
         for kind in events:
             s.add(Event(at=WHEN, kind=kind, data={"k": kind}))
         s.commit()
@@ -111,8 +118,9 @@ def test_refuses_a_symlinked_state_dir(tmp_path):
     target.mkdir()
     (home / ".local" / "state" / "familymon").symlink_to(target)
     with pytest.raises(MigrationError, match="symlink"):
-        migrate_user_state("kid", home / ".local" / "state" / "familymon", tmp_path / "dst",
-                           home=home)
+        migrate_user_state(
+            "kid", home / ".local" / "state" / "familymon", tmp_path / "dst", home=home
+        )
 
 
 def test_symlinked_files_inside_are_not_copied(layout, tmp_path):
@@ -160,16 +168,25 @@ def test_captures_root_took_before_the_migration_are_kept(layout):
     home, src, dst = layout
     sessions = make_session_factory(make_engine(dst / "captures.db"))
     with sessions() as s:
-        c = Capture(captured_at=WHEN, active_wm_class="root", active_title="root-took",
-                    windows=[])
+        c = Capture(captured_at=WHEN, active_wm_class="root", active_title="root-took", windows=[])
         s.add(c)
         s.flush()
-        s.add(Classification(capture_id=c.id, category="games", confidence=0.9,
-                             evidence_text="e", source="heuristic", created_at=WHEN))
+        s.add(
+            Classification(
+                capture_id=c.id,
+                category="games",
+                confidence=0.9,
+                evidence_text="e",
+                source="heuristic",
+                created_at=WHEN,
+            )
+        )
         s.commit()
     report = migrate_user_state("kid", src, dst, home=home, now=WHEN)
     assert report.root_captures_carried == 1
-    rows = _rows(dst / "captures.db",
-                 "SELECT c.active_title, k.category FROM capture c "
-                 "LEFT JOIN classification k ON k.capture_id = c.id ORDER BY c.id")
+    rows = _rows(
+        dst / "captures.db",
+        "SELECT c.active_title, k.category FROM capture c "
+        "LEFT JOIN classification k ON k.capture_id = c.id ORDER BY c.id",
+    )
     assert rows == [("t0", None), ("t1", None), ("root-took", "games")]

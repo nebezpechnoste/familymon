@@ -61,9 +61,7 @@ def test_browser_plain_is_browsing_other():
 
 def test_loophole_messaging_focus_does_not_mask_visible_game():
     """The whole point of B: chat focused, game visible but unfocused -> games."""
-    c = _classifier(
-        apps_map={"telegram-desktop": Category.MESSAGING, "minetest": Category.GAMES}
-    )
+    c = _classifier(apps_map={"telegram-desktop": Category.MESSAGING, "minetest": Category.GAMES})
     windows = [
         _win("telegram-desktop_telegram-desktop", "chat", active=True),
         _win("minetest", "Minetest", active=False),
@@ -91,9 +89,7 @@ def test_game_running_classifies_as_games_even_when_window_unmapped():
     """Trusted game detection is authoritative: classifies GAMES even if the
     game's window isn't in our .desktop scan."""
     c = _classifier()
-    cls = c.classify(
-        1, [_win("some-unmapped-game", "Game", active=True)], game_running=True
-    )
+    cls = c.classify(1, [_win("some-unmapped-game", "Game", active=True)], game_running=True)
     assert cls.category is Category.GAMES
     assert cls.source == "game_process"
     assert Category.GAMES in cls.present_categories
@@ -143,9 +139,7 @@ def test_school_outranks_messaging_but_not_games():
 
 
 def test_minimized_window_does_not_contribute():
-    c = _classifier(
-        apps_map={"telegram-desktop": Category.MESSAGING, "minetest": Category.GAMES}
-    )
+    c = _classifier(apps_map={"telegram-desktop": Category.MESSAGING, "minetest": Category.GAMES})
     windows = [
         _win("telegram-desktop_telegram-desktop", "chat", active=True),
         _win("minetest", "Minetest", active=False, minimized=True),  # minimized
@@ -158,7 +152,9 @@ def test_suppressed_session_classifies_as_idle():
     c = _classifier()
     cls = c.classify(1, [_win(None, None)], suppressed_reason="session_locked")
     assert cls.category is Category.IDLE
-    cls2 = c.classify(1, [_win("firefox_firefox", "x", active=True)], suppressed_reason="session_inactive")
+    cls2 = c.classify(
+        1, [_win("firefox_firefox", "x", active=True)], suppressed_reason="session_inactive"
+    )
     assert cls2.category is Category.IDLE
 
 
@@ -200,9 +196,7 @@ def test_schedule_group_code_in_title_classifies_as_school():
 
 def test_window_on_another_virtual_desktop_does_not_contribute():
     """Parked on another desktop or activity = not on screen, like minimized."""
-    c = _classifier(
-        apps_map={"telegram-desktop": Category.MESSAGING, "minetest": Category.GAMES}
-    )
+    c = _classifier(apps_map={"telegram-desktop": Category.MESSAGING, "minetest": Category.GAMES})
     windows = [
         _win("telegram-desktop_telegram-desktop", "chat", active=True),
         WindowView(wm_class="minetest", title="Minetest", on_current_desktop=False),
