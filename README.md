@@ -1,7 +1,7 @@
 # familymon
 
 [![tests](https://github.com/nebezpechnoste/familymon/actions/workflows/tests.yml/badge.svg)](https://github.com/nebezpechnoste/familymon/actions/workflows/tests.yml)
-[![CodeQL](https://github.com/nebezpechnoste/familymon/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/nebezpechnoste/familymon/security/code-scanning)
+[![CodeQL](https://github.com/nebezpechnoste/familymon/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/nebezpechnoste/familymon/actions/workflows/github-code-scanning/codeql)
 [![CodeRabbit reviews](https://img.shields.io/coderabbit/prs/github/nebezpechnoste/familymon?label=CodeRabbit%20reviews&labelColor=171717&color=FF570A)](https://coderabbit.ai)
 [![license](https://img.shields.io/github/license/nebezpechnoste/familymon?color=blue)](LICENSE)
 [![python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fnebezpechnoste%2Ffamilymon%2Fmain%2Fpyproject.toml&logo=python&logoColor=white)](pyproject.toml)
