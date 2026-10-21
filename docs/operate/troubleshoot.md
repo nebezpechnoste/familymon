@@ -158,9 +158,9 @@ journalctl -u familymon-heartbeat.service -n 30 --no-pager
 sudo familymonctl events --kind heartbeat | tail -5
 ```
 
-If the machine was just off or asleep, wait a few minutes. Otherwise the timer is disabled or the service is failing (a non-zero exit is expected for stale/dead and does not stop the timer). The kid cannot disable it, so this means a service problem or someone with root.
+If the machine was just off or asleep, wait a few minutes. If `list-timers` shows the timer active with an empty NEXT column and a LAST from before the last boot, the timer never armed after boot: see [Timers not armed](#timers-not-armed). Otherwise the timer is disabled or the service is failing (a non-zero exit is expected for stale/dead and does not stop the timer). The kid cannot disable it, so this means a service problem or someone with root.
 
-**Fix.** `sudo systemctl enable --now familymon-heartbeat.timer`.
+**Fix.** For a timer that never armed: `sudo systemctl start familymon-heartbeat.service` once; the timer counts from that run. For a disabled timer: `sudo systemctl enable --now familymon-heartbeat.timer`. Neither touches the kid's session.
 
 ## Captures shown as unknown
 
@@ -168,7 +168,7 @@ If the machine was just off or asleep, wait a few minutes. Otherwise the timer i
 
 **Diagnose (read-only).** Distinguish three cases.
 
-1. **Not yet classified.** Rows without a classification show as `unknown` on the dashboard. The classify timer runs every 5 minutes (first run 2 min after boot). Check:
+1. **Not yet classified.** Rows without a classification show as `unknown` on the dashboard. The classify timer runs every 5 minutes (first run 2 min after the timer starts). Check:
 
    ```bash
    sudo familymonctl health          # "classified 24h" percentage
@@ -203,17 +203,27 @@ If the machine was just off or asleep, wait a few minutes. Otherwise the timer i
 
 **Symptom.** A timer exists but never fires. Captures stay unclassified, no heartbeat events appear, no notifications.
 
-**Background.** Every timer is a system timer now, armed by the system manager at boot, so the old failure (a user timer that never armed when the kid logged in long after boot) cannot happen. A timer that does not fire is disabled, was removed by hand, or its service is skipped by a `ConditionPathExists` (no `/var/lib/familymon/policy.yaml`).
+**Background.** Two different causes look the same.
+
+1. **A boot-relative timer missed its point.** Releases before 2026-10-21 defined the heartbeat, classify and enforce timers with `OnBootSec=`. A boot that waits at the disk-passphrase prompt starts the timers minutes after "boot"; a passed `OnBootSec` point does not fire on systemd 259, and with the service never run `OnUnitActiveSec=` has nothing to count from. The timer then sits `active` with an empty NEXT and a LAST from the previous boot, while capture keeps running (seen on 2026-10-21: 329 captures, no classification, no heartbeat, for a day). Current releases use `OnActiveSec=`, counted from the timer's own start.
+2. **Disabled or skipped.** The timer was disabled or removed by hand, or its service is skipped by a `ConditionPathExists` (no `/var/lib/familymon/policy.yaml`).
 
 **Diagnose (read-only).**
 
 ```bash
 systemctl list-timers --all 'familymon-*'     # NEXT column must not be empty
-systemctl status familymon-classify.timer familymon-heartbeat.timer familymon-notify.timer
-systemctl cat familymon-classify.timer        # check for local drop-ins
+systemctl show familymon-heartbeat.timer -p ActiveEnterTimestamp,LastTriggerUSec,NextElapseUSecMonotonic
+systemctl cat familymon-classify.timer        # OnBootSec= means an old release; check for drop-ins
 ```
 
-**Fix.**
+**Fix.** Case 1: run the services once; each timer counts from that run. This reads and writes the database only and never touches the kid's session, so it is safe during a lesson or a call.
+
+```bash
+sudo systemctl start familymon-classify.service familymon-heartbeat.service
+systemctl list-timers familymon-classify.timer familymon-heartbeat.timer   # NEXT now set
+```
+
+Then upgrade to a release with `OnActiveSec=` timers so it does not recur at the next boot. Case 2:
 
 ```bash
 sudo systemctl daemon-reload

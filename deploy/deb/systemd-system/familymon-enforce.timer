@@ -1,11 +1,13 @@
-# Hourly + shortly after boot: catches drift from unattended timekpr upgrades
-# (daemon restarts, config rewrites) and policy.yaml edits.
+# Hourly + shortly after the timer starts (boot, package install): catches
+# drift from unattended timekpr upgrades (daemon restarts, config rewrites)
+# and policy.yaml edits.
 # Enable:  systemctl enable --now familymon-enforce.timer
+# OnActiveSec, not OnBootSec: see familymon-heartbeat.timer.
 [Unit]
 Description=familymon periodic enforcement reconcile
 
 [Timer]
-OnBootSec=5min
+OnActiveSec=5min
 OnUnitActiveSec=1h
 RandomizedDelaySec=5min
 Persistent=true

@@ -133,3 +133,11 @@ Dated decisions with the reasoning, newest last. Each entry says what was decide
 **Why:** nothing imported them. They cost a 32 MB library in every deb, an OCR engine installed on the child's laptop, an apt install on every CI run, and a line in the known-gaps list admitting the waste. Declaring a dependency is not a plan; the plan lives in the decision log and `docs/PLAN.md`.
 
 **Consequences:** a smaller deb; `apt-get autoremove` on a laptop upgraded from an earlier release drops `tesseract-ocr`; the reserved classification source names stay in the schema. The same check found that the deb's `--all-extras` had been bundling the `dev` extra (pytest, ruff); the build now syncs the `dashboard` and `analyze` extras only.
+
+## 2026-10-21 · Timers count from their own activation, never from boot
+
+**Decided:** every familymon system timer that is not calendar-based uses `OnActiveSec=` for its first run (then `OnUnitActiveSec=`), not `OnBootSec=`.
+
+**Why:** the child's laptop boots through a disk-passphrase prompt, so systemd started the timers 2 min 5 s after boot. The heartbeat (`OnBootSec=1min`) and classify (`OnBootSec=2min`) points were already in the past, systemd 259 did not fire them, and with the service never having run `OnUnitActiveSec=` had nothing to count from: both timers sat "active" with no next elapse for a whole day while capture kept running. The dashboard showed "Heartbeat watcher not running" and 329 unclassified captures. The same gotcha had hit the user timers on 2026-10-01 and was fixed there with `OnActiveSec=`; the system units written for the root redesign on 2026-10-19 reintroduced it. Enforce survived only because its point was 5 minutes.
+
+**Consequences:** `familymon-heartbeat.timer`, `familymon-classify.timer` and `familymon-enforce.timer` changed; `familymon-chargeback.timer` already used `OnActiveSec=`; the calendar timers are unaffected. Recovery on an affected machine: start the two services once by hand, or install the fixed package.

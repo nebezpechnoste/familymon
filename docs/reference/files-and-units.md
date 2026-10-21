@@ -133,14 +133,14 @@ All run as root except the dashboard.
 | Unit | Schedule / trigger | Runs |
 |---|---|---|
 | `familymon-capture.service` | `WantedBy=multi-user.target`, `After=systemd-logind.service`, `ConditionPathExists=/var/lib/familymon/policy.yaml`; `Restart=always`, `RestartSec=10`, `Nice=10`, `PrivateTmp=yes`, `RuntimeDirectory=familymon` (mode 0755) | `/usr/bin/familymonctl capture-supervise` |
-| `familymon-classify.timer` | `OnBootSec=2min`, `OnUnitActiveSec=5min`, `Persistent=true` | triggers `familymon-classify.service` |
+| `familymon-classify.timer` | `OnActiveSec=2min`, `OnUnitActiveSec=5min`, `Persistent=true` | triggers `familymon-classify.service` |
 | `familymon-classify.service` | oneshot, `Nice=15` | `familymonctl classify` |
-| `familymon-heartbeat.timer` | `OnBootSec=1min`, `OnUnitActiveSec=1min`, `Persistent=true` | triggers `familymon-heartbeat.service` |
+| `familymon-heartbeat.timer` | `OnActiveSec=1min`, `OnUnitActiveSec=1min`, `Persistent=true` | triggers `familymon-heartbeat.service` |
 | `familymon-heartbeat.service` | oneshot; non-zero exit marks the unit failed | `familymonctl heartbeat-once` |
 | `familymon-notify.timer` | `OnCalendar=*-*-* *:*:05` (every minute, 5 s past), `AccuracySec=5s`, `Persistent=false` | triggers `familymon-notify.service` |
 | `familymon-notify.service` | oneshot, `ConditionPathExists` policy; delivers into the kid's session through `runuser` | `familymonctl schedule notify-tick` |
 | `familymon-dashboard.service` | `User=familymon`, `Group=familymon`, `EnvironmentFile=/etc/familymon/dashboard.env`, `Environment=FAMILYMON_STATE_DIR=/var/lib/familymon`, `ConditionPathExists=/etc/familymon/dashboard.env`, `Restart=on-failure`, `RestartSec=10`, sandboxed (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `ProtectKernelTunables`, `ProtectKernelModules`, `ProtectControlGroups`, `RestrictSUIDSGID`), `WantedBy=multi-user.target` | `familymonctl dashboard` |
-| `familymon-enforce.timer` | `OnBootSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`, `Persistent=true` | triggers `familymon-enforce.service` |
+| `familymon-enforce.timer` | `OnActiveSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`, `Persistent=true` | triggers `familymon-enforce.service` |
 | `familymon-enforce.service` | oneshot, `After=timekpr.service`, `ConditionPathExists` policy; exit 3 means the apply guard refused (unit shows failed) | `familymonctl enforce apply` |
 | `familymon-chargeback.timer` | `OnActiveSec=3min`, `OnUnitActiveSec=5min`, `Persistent=true` | triggers `familymon-chargeback.service` |
 | `familymon-chargeback.service` | oneshot, `After=timekpr.service`, `ConditionPathExists` policy | `familymonctl enforce chargeback` |

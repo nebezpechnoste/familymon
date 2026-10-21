@@ -1,9 +1,13 @@
 # Every minute. Enable:  systemctl enable --now familymon-heartbeat.timer
+# OnActiveSec, not OnBootSec: the first point is counted from the timer's own
+# activation. A boot that waits at the disk-passphrase prompt starts timers
+# minutes after "boot", a passed OnBootSec point never fires, and with the
+# service never run OnUnitActiveSec has nothing to count from (2026-10-21).
 [Unit]
 Description=familymon periodic heartbeat
 
 [Timer]
-OnBootSec=1min
+OnActiveSec=1min
 OnUnitActiveSec=1min
 Persistent=true
 

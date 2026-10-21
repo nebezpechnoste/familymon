@@ -1,10 +1,11 @@
 # Runs the heuristic classifier every 5 minutes so the dashboard stays current.
 # Enable:  systemctl enable --now familymon-classify.timer  (the postinst does)
+# OnActiveSec, not OnBootSec: see familymon-heartbeat.timer.
 [Unit]
 Description=familymon periodic classify
 
 [Timer]
-OnBootSec=2min
+OnActiveSec=2min
 OnUnitActiveSec=5min
 Persistent=true
 

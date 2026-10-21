@@ -89,7 +89,7 @@ Not conffiles:
 
 | Change | How it takes effect |
 |---|---|
-| `policy.yaml`: `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks` | Not live. Needs `familymonctl enforce apply` (root), or the next run of `familymon-enforce.timer` (`OnBootSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`). The package enables the timer; it acts once `policy.yaml` exists. |
+| `policy.yaml`: `user`, `lockout`, `allowed_hours`, `daily_limits`, `games.enabled`, `games.daily_limits`, `games.extra_masks` | Not live. Needs `familymonctl enforce apply` (root), or the next run of `familymon-enforce.timer` (`OnActiveSec=5min`, `OnUnitActiveSec=1h`, `RandomizedDelaySec=5min`). The package enables the timer; it acts once `policy.yaml` exists. |
 | `policy.yaml`: `games.charge_browser_games`, `games.charge_browser_games_when` | Next chargeback tick (`familymon-chargeback.timer`: `OnActiveSec=3min`, `OnUnitActiveSec=5min`). No `enforce apply`. |
 | `policy.yaml`: `web_block.*` | Next `familymon-webblock.timer` tick (every minute). No `enforce apply`. |
 | `policy.yaml`: `retention.screenshots_days` | Next run of `familymon-retention.timer` (daily, 03:00 plus up to 1 h; catches up after boot). Preview: `sudo familymonctl retention --dry-run`. No `enforce apply`. |
