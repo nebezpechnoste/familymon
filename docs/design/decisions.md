@@ -132,7 +132,7 @@ Dated decisions with the reasoning, newest last. Each entry says what was decide
 
 **Why:** nothing imported them. They cost a 32 MB library in every deb, an OCR engine installed on the child's laptop, an apt install on every CI run, and a line in the known-gaps list admitting the waste. Declaring a dependency is not a plan; the plan lives in the decision log and `docs/PLAN.md`.
 
-**Consequences:** a smaller deb; `apt-get autoremove` on a laptop upgraded from an earlier release drops `tesseract-ocr`; the reserved classification source names stay in the schema. The same check found that the deb's `--all-extras` had been bundling the `dev` extra (pytest, ruff); the build now syncs the `dashboard` and `analyze` extras only.
+**Consequences:** a deb a third smaller (85 MB to 57 MB); the reserved classification source names stay in the schema. `tesseract-ocr` itself stays on the deployed laptop, because `kde-spectacle` recommends it for its own text-recognition feature; familymon simply no longer asks for it. The same check found that the deb's `--all-extras` had been bundling the `dev` extra (pytest, ruff); the build now syncs the `dashboard` and `analyze` extras only.
 
 ## 2026-10-21 · Timers count from their own activation, never from boot
 
