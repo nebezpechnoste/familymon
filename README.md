@@ -79,7 +79,7 @@ Familymon is in daily use in one household. Gaps, deliberate for now:
 
 - Only Chrome is governed during lessons; other browsers are closed, not filtered. There is no DNS layer, so what non-browser apps do on the network is timekpr's business (process budgets), not familymon's.
 - The lesson rule flags known entertainment video and allows everything else. The planned inversion (allow only class platforms during lessons) is not built.
-- Classification is heuristic only. The local vision-model and OCR stages of the original plan were never built; `pytesseract` is still declared as a dependency for the OCR stage and is unused.
+- Classification is heuristic only. The OCR, keyword and local vision-model stages of the original plan are still planned, not built; their dependencies are not shipped until they are.
 - The live lesson warning only sees captures that the 5-minute classification pass has labelled, so a short distraction can escape the warning. It still shows in the timeline.
 - The dashboard has no TLS.
 

@@ -52,7 +52,7 @@ CLI entry point: `familymonctl = "familymon.cli:main"` (`pyproject.toml`). Every
 | `chrome_extension/` | MV3 extension (`background.js`, `rules.js`, `blocked.html/js`, `schema.json`, `manifest.json`). |
 | `defaults/*.yaml` | Bundled defaults (messaging apps, games, brands, domains, extras, example policy). |
 
-Not implemented: an X11 backend (a docstring in `backend.py` mentions one; no class exists), OCR/VLM classifiers (`ocr_kw`, `local_vlm`, `claude_code_bootstrap` are reserved source names), and any retention or purge of captures, events or screenshots.
+Not implemented: an X11 backend (a docstring in `backend.py` mentions one; no class exists), the OCR/VLM classifiers (`ocr_kw`, `local_vlm`, `claude_code_bootstrap` are reserved source names; still planned, and their dependencies are not declared until the code lands), and any purge of `capture`, `classification` or `event` rows (screenshot files are pruned by `storage/retention.py`).
 
 ## Data flow
 

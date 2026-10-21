@@ -50,8 +50,10 @@ uv venv --python /usr/bin/python3 --relocatable "$VENV"
 # so uv would happily reuse a CACHED familymon wheel from an earlier build —
 # which shipped stale code under a fresh version stamp once. Always rebuild
 # the project itself; dependencies still come from the cache/lock.
-UV_PROJECT_ENVIRONMENT="$VENV" uv sync --frozen --no-dev --all-extras --no-editable \
-    --reinstall-package familymon
+# Runtime extras only: `dev` is an extra too (pytest, ruff, the test HTTP
+# client), and --all-extras used to ship it inside the package.
+UV_PROJECT_ENVIRONMENT="$VENV" uv sync --frozen --no-dev --extra dashboard --extra analyze \
+    --no-editable --reinstall-package familymon
 
 # Sanity: the venv must point at the system interpreter.
 TARGET="$(readlink -f "$VENV/bin/python3")"
@@ -112,7 +114,7 @@ Priority: optional
 Architecture: amd64
 Installed-Size: ${INSTALLED_SIZE}
 Depends: python3 (>= ${PY_MINOR}), python3 (<< ${PY_NEXT}), kde-spectacle, sqlite3, libnotify-bin, adduser, util-linux, procps, findutils
-Recommends: timekpr-next, tesseract-ocr
+Recommends: timekpr-next
 Maintainer: $(git config user.name) <$(git config user.email)>
 Description: Local-first parental-control monitoring
  Captures screenshots and window state, classifies activity locally,

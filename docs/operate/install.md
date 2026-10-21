@@ -16,7 +16,8 @@ Parent decides: familymon is disclosed monitoring. Tell the monitored user what 
 | `timekpr-next` | Time and app enforcement backend (`enforce ...`). | The deb only Recommends it. Install it yourself. See below. |
 | Google Chrome | Web blocking writes Chrome managed policy at `/etc/opt/chrome/policies/managed/familymon.json` and force-installs a bundled extension. | The path is Chrome's, not Chromium's. How to install Chrome is not defined by the code: use Google's own package and check the OS-recommended method first. |
 | Debian-family system with `python3`, `kde-spectacle`, `sqlite3`, `libnotify-bin` | Declared as deb `Depends`. | `python3` must be the minor version the deb was built against (the deb pins `>= 3.N, << 3.N+1`). Check with `apt-cache policy familymon` before installing. |
-| `tesseract-ocr` | deb `Recommends`. | Not used by the current heuristic classifier. Optional. |
+
+Not needed: `tesseract-ocr`. Releases before 2026-10-21 recommended it for an OCR stage that was never built; it is still on the plan, and its packages will come back with the code that uses them. On a laptop upgraded from such a release, `sudo apt-get autoremove` drops it.
 
 Install-method rule: before installing any package, check the OS-recommended path and show alternatives. Do not pick silently.
 

@@ -12,7 +12,7 @@ Python (uses the locked environment):
 uv run pytest -q
 ```
 
-CI uses `uv run --python 3.14 --all-extras --locked pytest -q`. The extension rules are tested with node (`tests/js/rules.test.mjs`) and are run from pytest by `tests/test_extension_js.py`, which is skipped when `node` is not installed. It passes files, not a directory, to `node --test` because older node treats a directory as a module. CI installs `tesseract-ocr` and node 22.
+CI uses `uv run --python 3.14 --all-extras --locked pytest -q`. The extension rules are tested with node (`tests/js/rules.test.mjs`) and are run from pytest by `tests/test_extension_js.py`, which is skipped when `node` is not installed. It passes files, not a directory, to `node --test` because older node treats a directory as a module. CI installs node 22 and nothing else system-wide.
 
 Test files live in `tests/` and mirror modules (for example `test_heuristics.py`, `test_webblock.py`, `test_recovery.py`).
 
@@ -64,9 +64,9 @@ scripts/build-deb.sh
 Writes `dist/familymon_<VERSION>_amd64.deb`. Changes the local tree only (`dist/`, a temp staging dir, and `private/chrome-extension-key.pem` if it must be generated).
 
 - Version: `<pyproject version>+<YYYYMMDD.HHMM>.g<short sha>[.dirty]`.
-- Bundles a relocatable venv at `/opt/familymon/venv` (`uv venv --relocatable`, `uv sync --frozen --no-dev --all-extras --no-editable`). `/usr/bin/familymonctl` is a wrapper around `/opt/familymon/venv/bin/python3 -m familymon.cli`.
+- Bundles a relocatable venv at `/opt/familymon/venv` (`uv venv --relocatable`, `uv sync --frozen --no-dev --extra dashboard --extra analyze --no-editable`). The `dev` extra (pytest, ruff, the test HTTP client) is deliberately not synced into the package; before 2026-10-21 `--all-extras` shipped it. `/usr/bin/familymonctl` is a wrapper around `/opt/familymon/venv/bin/python3 -m familymon.cli`.
 - Checks: the venv python resolves to system python3; the staged `familymon` package is byte-identical to the working tree (else exit 1). A smoke test runs `familymon.cli --help` from the staged venv.
-- Depends: `python3` (matching the build host's minor version), `kde-spectacle`, `sqlite3`, `libnotify-bin`, `adduser`, `util-linux` (`runuser`), `procps` (`pkill`), `findutils`. Recommends: `timekpr-next`, `tesseract-ocr`.
+- Depends: `python3` (matching the build host's minor version), `kde-spectacle`, `sqlite3`, `libnotify-bin`, `adduser`, `util-linux` (`runuser`), `procps` (`pkill`), `findutils`. Recommends: `timekpr-next`. The `analyze` extra declares only what the built pipeline imports (`imagehash`, `pillow`); the OCR, keyword and local-VLM stages stay on the plan and bring their dependencies (`pytesseract` with `tesseract-ocr`, `scikit-learn`, an HTTP client for Ollama) back when they are built. `httpx` remains in the `dev` extra only because FastAPI's test client needs it.
 - Conffiles: `/etc/familymon/{messaging_apps,game_apps,schedule_extras}.yaml`.
 - Installs the system units from `deploy/deb/systemd-system/` to `/usr/lib/systemd/system/` (the deb ships no user units; `deploy/systemd/user/` is dev-only), and `familymon.desktop` (`NoDisplay=true`, used as the notification `desktop-entry` hint).
 - Builds the Chrome extension into `/usr/share/familymon/chrome-extension` with version `1.<yymm>.<d>.<Hmm>`. Each build must have a higher version or Chrome keeps the old one.
