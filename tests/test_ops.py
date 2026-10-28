@@ -407,3 +407,136 @@ def test_cli_health_and_events_json(state: Path):
 def test_events_without_db(state: Path):
     with pytest.raises(ops.OpsError, match="no database"):
         ops.events_on()
+
+
+# ---- review fixes (2026-10-28) -----------------------------------------------
+
+
+class _Frozen0300(datetime):
+    """Monday 03:00: outside the example policy's 07:00-21:59 window."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 10, 26, 3, 0)
+
+
+def test_cli_apply_and_grant_refusals_exit_3(state: Path, monkeypatch):
+    _no_steam(monkeypatch)
+    ops.policy_write(EXAMPLE)
+    fake = FakeTimekpr(_open_live(sessions=1))
+    monkeypatch.setattr(ops, "_transport", lambda: fake)
+    monkeypatch.setattr(ops, "datetime", _Frozen0300)
+    env = _env(state)
+    r = CliRunner().invoke(main, ["enforce", "apply"], env=env)
+    assert r.exit_code == 3, r.output
+    assert "refusing" in r.output and "excludes the current time" in r.output
+    assert fake.applied == []
+    # A grant whose window would still exclude now is refused the same way.
+    r = CliRunner().invoke(
+        main, ["enforce", "grant", "kid", "--from", "20:00", "--until", "22:00"], env=env
+    )
+    assert r.exit_code == 3, r.output
+    assert "refusing" in r.output and "not stored" in r.output
+    assert fake.applied == [] and ops.grants_active(_Frozen0300.now())["count"] == 0
+    r = CliRunner().invoke(main, ["enforce", "apply", "--force"], env=env)
+    assert r.exit_code == 0, r.output
+    assert fake.applied
+
+
+def test_grant_does_not_push_a_pending_unsafe_policy(state: Path, monkeypatch):
+    _no_steam(monkeypatch)
+    ops.policy_write(
+        EXAMPLE.replace("daily_limits:\n  default: unlimited", "daily_limits:\n  default: 2h")
+    )
+    fake = FakeTimekpr(_open_live(sessions=1))  # live: unlimited, all day
+    now = datetime(2026, 10, 26, 15, 0)  # Monday, inside the window
+    plan = ops.plan_summary(transport=fake, now=now)
+    assert plan["safe_now"] is False and any("limit shrinks" in r for r in plan["reasons"])
+    r = ops.grant("kid", until="23:00", transport=fake, now=now)
+    # Only today's widened window went to timekpr; the shrink waits for apply.
+    assert [c.setting for c in fake.applied] == ["allowed_hours[monday]"]
+    assert "daily_limits" in r["hours"]["deferred"]
+    assert r["hours"]["timekpr_changes"][0]["setting"] == "allowed_hours[monday]"
+    assert r["hours"]["end"] == "23:00"
+    assert ops.grants_active(now)["count"] == 1
+    # With no session the whole plan is safe and the grant applies all of it.
+    fake2 = FakeTimekpr(_open_live(sessions=0))
+    r2 = ops.grant("kid", until="23:30", transport=fake2, now=now)
+    assert r2["hours"]["deferred"] == [] and len(fake2.applied) > 1
+
+
+def test_grant_refuses_when_todays_window_would_cut_the_session(state: Path, monkeypatch):
+    _no_steam(monkeypatch)
+    ops.policy_write(EXAMPLE)
+    fake = FakeTimekpr(_open_live(sessions=1))
+    now = datetime(2026, 10, 26, 3, 0)
+    with pytest.raises(ops.UnsafeNow, match="refusing to apply the grant"):
+        ops.grant("kid", from_="20:00", until="22:00", transport=fake, now=now)
+    assert fake.applied == [] and ops.grants_active(now)["count"] == 0
+    assert not (state / "grants.json").exists() or ops.grants_active(now)["count"] == 0
+
+
+def test_failed_grant_keeps_earlier_grants(state: Path, monkeypatch):
+    _no_steam(monkeypatch)
+    ops.policy_write(EXAMPLE)
+    fake = FakeTimekpr(_open_live(sessions=1))
+    now = datetime(2026, 10, 26, 21, 30)
+    ops.grant("kid", until="22:29", transport=fake, now=now)
+    assert ops.grants_active(now)["count"] == 1
+
+    def boom(now=None):
+        raise ops.OpsError("policy.yaml is unusable: boom")
+
+    monkeypatch.setattr(ops, "desired_settings", boom)
+    with pytest.raises(ops.OpsError, match="boom"):
+        ops.grant("kid", until="23:00", transport=fake, now=now)
+    active = ops.grants_active(now)
+    assert active["count"] == 1 and active["grants"][0]["end"] == "22:29"
+
+
+def test_grant_and_revoke_need_the_policy_user(state: Path, monkeypatch):
+    _no_steam(monkeypatch)
+    ops.policy_write(EXAMPLE)
+    fake = FakeTimekpr(_open_live())
+    with pytest.raises(ops.OpsError, match="policy user is 'kid', not 'other'"):
+        ops.grant("other", playtime="10m", transport=fake)
+    assert fake.playtime_adjustments == []
+    with pytest.raises(ops.OpsError, match="policy user is 'kid', not 'other'"):
+        ops.revoke_grants("other", transport=fake)
+    with pytest.raises(ops.OpsError, match="HH:MM"):
+        ops.grant("kid", until="24:00", transport=fake)
+    with pytest.raises(ops.OpsError, match="HH:MM"):
+        ops.grant("kid", until="7pm", transport=fake)
+
+
+def test_identical_rewrite_keeps_the_undo_copy(state: Path):
+    v2 = EXAMPLE.replace("default: {start: 7, end: 21}", "default: {start: 8, end: 21}")
+    ops.policy_write(EXAMPLE)
+    r = ops.policy_write(v2)
+    prev = state / "policy.yaml.prev"
+    assert r["previous_saved_to"] == str(prev) and prev.read_text() == EXAMPLE
+    r = ops.policy_write(v2)  # a retry of the same write
+    assert r["changed_keys"] == [] and r["previous_saved_to"] == str(prev)
+    assert prev.read_text() == EXAMPLE  # the undo still undoes
+    # Same for config overrides.
+    text = "exclude_subjects: [Assembly]\n"
+    assert ops.config_write("schedule_extras.yaml", text)["previous_saved_to"] is None
+    assert ops.config_write("schedule_extras.yaml", text)["previous_saved_to"] is None
+    r = ops.config_write("schedule_extras.yaml", "exclude_subjects: [Art]\n")
+    assert r["previous_saved_to"].endswith("schedule_extras.yaml.prev")
+    r = ops.config_write("schedule_extras.yaml", "exclude_subjects: [Art]\n")
+    assert Path(r["previous_saved_to"]).read_text() == text
+
+
+def test_messaging_contract_cannot_be_emptied_or_misspelled(state: Path):
+    with pytest.raises(ops.OpsError, match="no window classes"):
+        ops.config_write("messaging_apps.yaml", "{}\n")
+    with pytest.raises(ops.OpsError, match="no window classes"):
+        ops.config_write("messaging_apps.yaml", "window_classes: []\ntitle_patterns: []\n")
+    with pytest.raises(ops.OpsError, match="unknown key"):
+        ops.config_write("messaging_apps.yaml", "windows_classes: [signal]\n")
+    r = ops.config_write("messaging_apps.yaml", "window_classes: [signal]\n")
+    assert r["path"].endswith("messaging_apps.yaml")
+    with pytest.raises(ops.OpsError, match="unknown category"):
+        ops.config_write("title_brands.yaml", "vidoe: [youtube]\n")
+    assert ops.config_write("title_brands.yaml", "video: [youtube]\n")["path"]

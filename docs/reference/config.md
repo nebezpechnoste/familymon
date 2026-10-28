@@ -105,7 +105,7 @@ Not conffiles:
 
 Policy files are re-read by every command on every run. No process caches `policy.yaml`.
 
-`familymonctl policy set` (and the `policy_set` MCP tool) applies nothing; it reports, for each changed top-level key, what makes the change take effect, from this table (`takes_effect` in the result):
+`familymonctl policy set` (and the `policy_set` MCP tool) applies nothing to timekpr; hours, limits, lockout and game budgets need `enforce plan` then `enforce apply`, and `user`, `personal_time`, `web_block` and `retention` are read by their own timers and act within minutes (`retention` irreversibly: it deletes screenshots). It reports, for each changed top-level key, what makes the change take effect, from this table (`takes_effect` in the result):
 
 | Changed key | Reported as |
 |---|---|
@@ -116,7 +116,7 @@ Policy files are re-read by every command on every run. No process caches `polic
 | `personal_time` | `live within a minute (capture and notify re-read it every tick)` |
 | anything else | `unknown key` (familymon ignores it; usually a typo) |
 
-`familymonctl config set <name>` (and `config_set`) reports one `takes effect` text per file, matching the rows above: `schedule_extras.yaml` not live (run `schedule refresh`), `messaging_apps.yaml` next capture tick, `game_apps.yaml` next game-library scan or a capture restart, `domains_starter.yaml` next web-block tick, notify tick and classify run, `title_brands.yaml` next process start of each consumer.
+`familymonctl config set <name>` (and `config_set`) keeps the existing `<name>.prev` when the new text is identical to the current override, and reports one `takes effect` text per file, matching the rows above: `schedule_extras.yaml` not live (run `schedule refresh`), `messaging_apps.yaml` next capture tick, `game_apps.yaml` next game-library scan or a capture restart, `domains_starter.yaml` next web-block tick, notify tick and classify run, `title_brands.yaml` next process start of each consumer.
 
 ## 3. `policy.yaml`
 
@@ -235,7 +235,7 @@ web_block:
 |---|---|---|---|
 | Read | `familymonctl policy get` | root | The file as it is, comments included. `--json` adds the parsed meaning. |
 | Check | `familymonctl policy validate FILE` (or `-` for stdin) | no for your own file | Every parser that reads the file; one error per failing section; exit 1 when invalid. Shows the resolved per-day windows and limits. Show the parent that summary. |
-| Write | `familymonctl policy set FILE` (or `-`) | root | Validates again, keeps the old file as `policy.yaml.prev`, writes the whole document verbatim (mode 0600), writes a `policy_changed` event. Applies nothing; prints what makes each changed key take effect (section 2). |
+| Write | `familymonctl policy set FILE` (or `-`) | root | Validates again, keeps the old file as `policy.yaml.prev`, writes the whole document verbatim (mode 0600), writes a `policy_changed` event. Applies nothing to timekpr; prints what makes each changed key take effect (section 2). Text identical to the current file keeps the existing `.prev`. |
 | Preview | `familymonctl enforce plan` | root or `timekpr` group | Prints the timekpra changes and any safety refusal. Never refuses. It may prune expired grants from `grants.json`. |
 | Apply | `familymonctl enforce apply` | root or `timekpr` group | Idempotent, writes only deltas, allowed hours last. Writes a `policy_applied` event when something changed. |
 | Verify | `familymonctl enforce show` | root or `timekpr` group | Reads live timekpr state over D-Bus for the policy user (or a USER given). |
@@ -355,7 +355,7 @@ Conffile `/etc/familymon/messaging_apps.yaml`. Window metadata is always recorde
 | `window_classes` | list of str | Lowercased. A window is skipped if its lowercased class, or any underscore-separated segment of it, matches. |
 | `title_patterns` | list of regex | Compiled case-insensitive, matched with `.search` on the window title. An invalid regex raises `re.error` at load. |
 
-Both keys are optional. An empty file raises `AttributeError` (no `or {}` guard), so keep at least `window_classes: []`; `config set messaging_apps.yaml` rejects an empty file and an invalid regex before writing. Edit with `config get` / `config set` (previous override kept as `messaging_apps.yaml.prev`). Apply: next capture tick, or `sudo systemctl restart familymon-capture.service`.
+Both keys are optional. An empty file raises `AttributeError` (no `or {}` guard), so keep at least `window_classes: []`; `config set messaging_apps.yaml` rejects an empty file, unknown keys, an invalid regex, and a file with no window classes and no title patterns (it would capture messaging windows to image) before writing. Edit with `config get` / `config set` (previous override kept as `messaging_apps.yaml.prev`). Apply: next capture tick, or `sudo systemctl restart familymon-capture.service`.
 
 Safety: weakening this list exposes private messages to screenshots. Do not remove entries without the parent's decision.
 

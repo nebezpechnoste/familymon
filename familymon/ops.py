@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -29,6 +30,7 @@ from typing import Any
 import yaml
 
 from familymon.config import (
+    _DEFAULTS_DIR,
     capture_interval_seconds,
     config_file,
     db_path,
@@ -52,6 +54,7 @@ from familymon.policy.enforcement import (
 from familymon.storage import perms
 
 DAY_NAMES = _DAY_NAMES
+log = logging.getLogger(__name__)
 
 
 class OpsError(Exception):
@@ -61,12 +64,21 @@ class OpsError(Exception):
 class UnsafeNow(OpsError):
     """Applying now would end the child's live session; needs an explicit force."""
 
-    def __init__(self, reasons: tuple[str, ...]) -> None:
+    def __init__(self, reasons: tuple[str, ...], *, action: str = "apply") -> None:
         self.reasons = reasons
+        self.action = action
+        if action == "apply":
+            hint = "Re-run with force only if the parent explicitly asked, or wait for logout."
+        else:
+            hint = (
+                "Apply the pending policy first (enforce_plan, then enforce_apply; force "
+                "only if the parent explicitly asked) or wait for logout."
+            )
         super().__init__(
-            "refusing to apply — it would cut off an active session: "
+            f"refusing to {action} — it would cut off an active session: "
             + "; ".join(reasons)
-            + ". Re-run with force only if the parent explicitly asked, or wait for logout."
+            + ". "
+            + hint
         )
 
 
@@ -97,11 +109,18 @@ def _write_atomic(path: Path, text: str, *, mode: int) -> None:
     os.replace(tmp, path)
 
 
-def _keep_previous(path: Path) -> str | None:
-    """Copy `path` to `<path>.prev` (one level of undo) and return that path."""
+def _keep_previous(path: Path, *, unless_equal: str | None = None) -> str | None:
+    """Copy `path` to `<path>.prev` (one level of undo) and return that path.
+
+    With `unless_equal` (the text about to be written), a write that changes
+    nothing keeps the existing `.prev` instead of overwriting the undo copy
+    with the current content (a retried `policy set` must not destroy the
+    undo); the result is then the existing `.prev`, or None."""
     if not path.exists():
         return None
     prev = path.with_name(path.name + ".prev")
+    if unless_equal is not None and path.read_text() == unless_equal:
+        return str(prev) if prev.exists() else None
     shutil.copyfile(path, prev)
     shutil.copymode(path, prev)
     return str(prev)
@@ -112,15 +131,21 @@ def _changed_top_level(old: dict, new: dict) -> list[str]:
 
 
 def _audit(kind: str, data: dict) -> None:
-    """Append an Event row when the DB exists. Never creates a DB just to log."""
+    """Append an Event row when the DB exists. Never creates a DB just to
+    log, and never fails the operation it records: by the time it runs the
+    change has happened, so a locked or damaged DB is logged, not raised
+    (an error here would read as "the change failed" and invite a retry)."""
     if not db_path().exists():
         return
-    from familymon.storage.models import Event
-    from familymon.storage.session import make_engine, make_session_factory
+    try:
+        from familymon.storage.models import Event
+        from familymon.storage.session import make_engine, make_session_factory
 
-    with make_session_factory(make_engine(db_path()))() as s:
-        s.add(Event(at=datetime.now(), kind=kind, data=data))
-        s.commit()
+        with make_session_factory(make_engine(db_path()))() as s:
+            s.add(Event(at=datetime.now(), kind=kind, data=data))
+            s.commit()
+    except Exception as e:  # broad on purpose, see docstring
+        log.warning("audit event %s not written: %s", kind, e)
 
 
 def _readonly_sessions():
@@ -143,11 +168,13 @@ def _day(value: str | date | None) -> date:
 
 
 def _hhmm(value: str, what: str) -> time:
+    """HH:MM as a time, with the same rules as policy.yaml's personal_time."""
+    from familymon.policy.personal_time import _hhmm as parse
+
     try:
-        hh, mm = value.strip().split(":")[:2]
-        return time(int(hh), int(mm))
-    except (ValueError, AttributeError):
-        raise OpsError(f"{what} must be HH:MM, got {value!r}") from None
+        return parse(value, what)
+    except PolicyError:
+        raise OpsError(f"{what} must be HH:MM (00:00-23:59), got {value!r}") from None
 
 
 def _hours_label(hours) -> str:
@@ -201,7 +228,7 @@ def status_summary() -> dict[str, Any]:
         "package_version": deb_version,
         "uid": os.geteuid(),
         "state_dir": str(state_dir()),
-        "config_dir": os.environ.get("FAMILYMON_CONFIG_DIR") or "/etc/familymon",
+        "config_dir": str(_config_override_dir()),
         "monitored_user": user,
         "db": {"path": str(db_path()), "exists": db_path().exists()},
         "screenshots_dir": {"path": str(screenshots_dir()), "exists": screenshots_dir().exists()},
@@ -433,7 +460,7 @@ def policy_write(text: str) -> dict[str, Any]:
             old = yaml.safe_load(path.read_text()) or {}
             if not isinstance(old, dict):
                 old = {}
-    previous = _keep_previous(path)
+    previous = _keep_previous(path, unless_equal=text)
     if previous:
         perms.secure(Path(previous))
     new = yaml.safe_load(text) or {}
@@ -465,14 +492,29 @@ def _validate_extras(path: Path) -> None:
 
 
 def _validate_messaging(path: Path) -> None:
+    """messaging_apps.yaml is the privacy contract: the loader tolerates a
+    missing or misspelled key (it reads an empty list), so the write path
+    must not. Unknown keys and an empty contract are refused."""
     import re
 
     from familymon.capture.messaging_skip import MessagingSkipList
 
+    raw = _parse_mapping(path.read_text(), "messaging_apps.yaml")
+    unknown = set(raw) - {"window_classes", "title_patterns"}
+    if unknown:
+        raise OpsError(
+            f"messaging_apps.yaml: unknown key(s) {sorted(unknown)}; expected window_classes "
+            "and title_patterns (a misspelled key would silently empty the privacy contract)"
+        )
     try:
-        MessagingSkipList.from_file(path)
+        skip = MessagingSkipList.from_file(path)
     except (re.error, AttributeError, TypeError, ValueError) as e:
         raise OpsError(f"messaging_apps.yaml rejected: {e}") from None
+    if not skip.window_classes and not skip.title_patterns:
+        raise OpsError(
+            "messaging_apps.yaml rejected: no window classes and no title patterns, "
+            "which would capture messaging windows to image"
+        )
 
 
 def _validate_string_lists(name: str, keys: tuple[str, ...]):
@@ -492,6 +534,13 @@ def _validate_string_lists(name: str, keys: tuple[str, ...]):
 
 
 def _validate_category_table(name: str):
+    """domains_starter.yaml / title_brands.yaml: category -> list of strings.
+
+    Stricter than the loaders on purpose: they skip a category they do not
+    know, so a typo would silently drop that whole section; here it is an
+    error. The real loader runs as well, so anything else it rejects, this
+    rejects."""
+
     def check(path: Path) -> None:
         from familymon.analyze.categories import Category
 
@@ -504,6 +553,14 @@ def _validate_category_table(name: str):
                 not isinstance(items, list) or not all(isinstance(v, str) for v in items)
             ):
                 raise OpsError(f"{name}: {cat} must be a list of strings")
+        if name == "domains_starter.yaml":
+            from familymon.categorize.domains import DomainCategoryLookup as loader
+        else:
+            from familymon.categorize.brands import BrandTitleLookup as loader
+        try:
+            loader.from_yaml(path)
+        except (TypeError, ValueError) as e:
+            raise OpsError(f"{name} rejected: {e}") from None
 
     return check
 
@@ -547,7 +604,7 @@ def config_read(name: str) -> dict[str, Any]:
     return {
         "name": name,
         "path": str(path),
-        "overridden": path == override,
+        "overridden": path.parent != _DEFAULTS_DIR,
         "override_path": str(override),
         "text": path.read_text(),
         "takes_effect": CONFIG_FILES[name][0],
@@ -571,7 +628,7 @@ def config_write(name: str, text: str) -> dict[str, Any]:
         validator(probe)
     finally:
         probe.unlink(missing_ok=True)
-    previous = _keep_previous(target)
+    previous = _keep_previous(target, unless_equal=text)
     _write_atomic(target, text, mode=0o644)
     _audit("config_changed", {"name": name, "previous": previous})
     return {
@@ -857,11 +914,21 @@ def grant(
 ) -> dict[str, Any]:
     """A one-off grant for today: `until` widens the allowed hours up to
     HH:MM (from `from_`, default now), `playtime` adds game time ("30m").
-    Applied immediately; honored by the reconciler; expires on its own."""
+    Applied immediately; honored by the reconciler; expires on its own.
+
+    The grant is folded into the policy, so applying it would also apply
+    whatever policy change is still pending. When that would cut the live
+    session (the guard that `apply_policy` runs), only today's widened
+    window is applied and the rest is reported as `deferred` for
+    `apply_policy`; when even today's window would not cover the current
+    time, the grant is not stored and `UnsafeNow` is raised."""
     from familymon.policy.grants import GrantStore, until_today
 
     if not until and not playtime:
         raise OpsError("give until=HH:MM and/or playtime=<duration>")
+    policy_user = _policy_user()
+    if user != policy_user:
+        raise OpsError(f"policy user is {policy_user!r}, not {user!r}")
     now = now or datetime.now()
     transport = transport or _transport()
     out: dict[str, Any] = {"user": user}
@@ -876,17 +943,25 @@ def grant(
             raise OpsError(str(e)) from None
         store = GrantStore(state_dir() / "grants.json")
         g = store.add(user, start, end, now=now, note=note)
+        deferred: list[str] = []
         try:
-            desired = desired_settings(now)  # includes the grant just stored
-            if desired.user != user:
-                raise OpsError(f"policy user is {desired.user!r}, not {user!r}")
+            desired = desired_settings(now)  # policy + grants, this one included
+            live = transport.get_live_state(user)
+            changes = plan_changes(desired, live)
+            verdict = plan_is_safe_now(desired, live, now)
+            if not verdict.safe:
+                # A policy change is pending that apply refused (or nobody
+                # applied yet). The grant must not push it onto the live
+                # session: widen today's window only, leave the rest.
+                idx = now.weekday()
+                today = f"allowed_hours[{_DAY_NAMES[idx]}]"
+                if not any(w.covers(now.time()) for w in desired.allowed_hours[idx]):
+                    raise UnsafeNow(verdict.reasons, action="apply the grant")
+                deferred = [c.setting for c in changes if c.setting != today]
+                changes = [c for c in changes if c.setting == today]
         except OpsError:
-            store.revoke(user, now)
+            store.remove(g)  # only this grant; earlier ones stay
             raise
-        live = transport.get_live_state(user)
-        changes = plan_changes(desired, live)
-        # Grants only widen the window, so this is safe at any hour by
-        # construction — no guard needed, no force.
         transport.apply(changes)
         _audit(
             "grant_hours",
@@ -897,6 +972,7 @@ def grant(
             "start": g.start,
             "end": g.end,
             "timekpr_changes": _changes_list(changes),
+            "deferred": deferred,
         }
     if playtime:
         try:
@@ -915,6 +991,9 @@ def revoke_grants(user: str, *, transport=None, now: datetime | None = None) -> 
     converges once it is safe)."""
     from familymon.policy.grants import GrantStore
 
+    policy_user = _policy_user()
+    if user != policy_user:
+        raise OpsError(f"policy user is {policy_user!r}, not {user!r}")
     now = now or datetime.now()
     n = GrantStore(state_dir() / "grants.json").revoke(user, now)
     desired = desired_settings(now)

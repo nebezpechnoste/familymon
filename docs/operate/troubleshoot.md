@@ -383,7 +383,7 @@ At least one of `--until` or `--playtime` is required. `--from HH:MM` sets the s
 
 **Undo.** `familymonctl enforce revoke kid` drops today's hour grants and converges to policy. It runs the safety guard and has no `--force`, so it may skip narrowing while the kid is logged in. The reconciler converges once safe. The grants are deleted either way.
 
-**Safety.** `enforce grant` stores the grant before checking that the policy user matches. A mismatch errors but leaves the grant stored.
+**Safety.** `enforce grant` and `enforce revoke` refuse a `USER` that is not the policy user (`policy user is 'kid', not '...'`) before storing anything. A failed grant removes only the grant it was adding; earlier grants of the day stay.
 
 ## Kid kicked off by an hours change
 
@@ -401,7 +401,7 @@ familymonctl enforce show kid  # live lockout type, hours, limits
 **Fix.**
 
 - Prefer waiting for logout. The hourly timer retries after exit 3, and the unit shows failed until then.
-- To widen hours for tonight, use `enforce grant` (no guard needed, since grants only widen).
+- To widen hours for tonight, use `enforce grant` (it runs the live-session guard: if a pending policy change would cut the session, only today's widened window is applied and the rest is reported as deferred; if even that would not cover now, it refuses with exit 3 and stores nothing).
 - `familymonctl enforce apply --force` overrides the guard. **Parent decides.** **Safety:** this can end the kid's session immediately. Use only with the parent's explicit approval.
 - Hour windows are inclusive whole hours: `{start: 7, end: 21}` allows 07:00 to 21:59.
 - Hour changes are applied last in the change list because narrowing is the riskiest change.

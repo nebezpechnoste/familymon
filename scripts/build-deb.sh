@@ -24,6 +24,9 @@
 # machines track the same Ubuntu release, so this is a non-constraint.
 set -euo pipefail
 export PATH="$HOME/.local/bin:/usr/bin:/usr/local/bin:/bin:${PATH:-}"
+# The staging tree inherits the build user's umask; 002 would ship every
+# file group-writable (by root's group: harmless, but wrong). Normalize.
+umask 022
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"

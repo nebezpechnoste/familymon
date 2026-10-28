@@ -172,7 +172,7 @@ Routes (all need auth, metadata only, no screenshot route): `GET /`, `GET /d/YYY
 
 The agent can operate familymon through typed MCP tools instead of typing `ssh kid-laptop sudo familymonctl ...`. The server is `familymonctl mcp`: stdio only, launched by the parent's agent over SSH, running as root for the length of the session. Nothing listens on the network and the monitored account cannot reach it. Tool list and permissions: [../reference/mcp.md](../reference/mcp.md).
 
-The package ships `/etc/sudoers.d/familymon-mcp` (a conffile, mode 0440): `%familymon-admin ALL=(root) NOPASSWD: /usr/bin/familymonctl mcp`. The postinst creates the empty system group `familymon-admin`. The parent's SSH key already reached root through password sudo, so the trust boundary does not move; one fixed command just needs no password.
+The package ships `/etc/sudoers.d/familymon-mcp` (a conffile, mode 0440): `%familymon-admin ALL=(root) NOPASSWD: /usr/bin/familymonctl mcp`. The postinst creates the empty system group `familymon-admin`. The parent's SSH key already reached root through password sudo, so the trust boundary does not move; one fixed command just needs no password. The wrapper runs Python in isolated mode (`python3 -I`), so a module planted in a directory the child can write (`/tmp`, a shared folder) cannot be picked up from the caller's current directory and run as root; `PYTHON*` variables and the user site-packages are ignored too, while `FAMILYMON_*` variables still pass.
 
 1. On the laptop, add the parent's own account (`parent`) to the group, root. Group membership applies at the next SSH login:
 
@@ -194,7 +194,7 @@ The package ships `/etc/sudoers.d/familymon-mcp` (a conffile, mode 0440): `%fami
    claude mcp add --scope user familymon -- ssh kid-laptop sudo -n familymonctl mcp
    ```
 
-4. Permissions. Auto-allow the read-only tools. Keep a prompt on `enforce_apply`, `grant` and `grant_revoke` (they are marked destructive), and optionally on the write tools (`policy_set`, `config_set`, `schedule_import`, `schedule_refresh`, `games_forget`); these keep a `.prev` copy for undo.
+4. Permissions. Auto-allow the 13 read-only tools. Keep a prompt on `enforce_apply`, `grant`, `grant_revoke`, `policy_set` and `config_set` (all marked destructive: `policy.yaml` can delete screenshots or re-target monitoring, and `messaging_apps.yaml` is the privacy contract). `schedule_import`, `schedule_refresh` and `games_forget` are non-destructive and keep a `.prev` copy, so they may be auto-allowed.
 
 If the check fails, see "MCP server does not start / tools missing" in [troubleshoot.md](troubleshoot.md).
 
@@ -220,7 +220,7 @@ Safety (screenshots): never take a raw screenshot of the monitored session for d
 sudo apt remove familymon
 ```
 
-The prerm disables and stops the capture and dashboard services and all seven timers on `remove`. There is no postrm. The Chrome policy file, timekpr settings, the `familymon` system account and `/var/lib/familymon` (captures, screenshots, policy, grants) are not removed. Remove `/etc/opt/chrome/policies/managed/familymon.json` and reset timekpr by hand if the parent wants a clean state, and delete `/var/lib/familymon` only if the parent wants the data gone.
+The prerm disables and stops the capture and dashboard services and all seven timers on `remove`. There is no postrm. The `familymon-admin` group stays (Debian convention for system groups). The Chrome policy file, timekpr settings, the `familymon` system account and `/var/lib/familymon` (captures, screenshots, policy, grants) are not removed. Remove `/etc/opt/chrome/policies/managed/familymon.json` and reset timekpr by hand if the parent wants a clean state, and delete `/var/lib/familymon` only if the parent wants the data gone.
 
 ## 12. Upgrading from a per-user release
 

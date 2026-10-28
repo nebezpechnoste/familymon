@@ -9,6 +9,7 @@ piece) asks `block_at(local_datetime)` whether a capture falls inside a block.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
@@ -216,11 +217,14 @@ class Schedule:
         }
         if self.breaks:
             payload["breaks"] = [br.to_dict() for br in self.breaks]
-        path.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
+        # Temp file + rename: the web-block timer reads this every minute.
         # Root-owned, readable by the dashboard's group (storage/perms.py).
         from familymon.storage.perms import secure
 
-        secure(path, shared=True)
+        tmp = path.with_name(f".{path.name}.tmp")
+        tmp.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
+        secure(tmp, shared=True)
+        os.replace(tmp, path)
 
     @classmethod
     def load(cls, path: Path) -> Schedule:

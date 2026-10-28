@@ -15,7 +15,7 @@ mcp = pytest.importorskip("mcp")
 from mcp.server.mcpserver.exceptions import ToolError  # noqa: E402
 
 from familymon import ops  # noqa: E402
-from familymon.mcp_server import build_server  # noqa: E402
+from familymon.mcp_server import INSTRUCTIONS, build_server  # noqa: E402
 from tests.test_ops import EXAMPLE, SAMPLE_WEEK, FakeTimekpr, _no_steam, _open_live  # noqa: E402
 
 READ_ONLY = {
@@ -33,7 +33,9 @@ READ_ONLY = {
     "grants_list",
     "games_list",
 }
-WRITES = {"policy_set", "config_set", "schedule_import", "schedule_refresh", "games_forget"}
+WRITES = {"schedule_import", "schedule_refresh", "games_forget"}
+# Files that can do harm on their own (retention, user, the privacy contract).
+SENSITIVE = {"policy_set", "config_set"}
 ENFORCING = {"enforce_apply", "grant", "grant_revoke"}
 
 
@@ -52,15 +54,21 @@ def state(tmp_path, monkeypatch) -> Path:
 async def test_every_tool_is_annotated_for_the_hosts_permission_model():
     tools = await build_server().list_tools()
     by_name = {t.name: t for t in tools}
-    assert set(by_name) == READ_ONLY | WRITES | ENFORCING
+    assert set(by_name) == READ_ONLY | WRITES | SENSITIVE | ENFORCING
     for name in READ_ONLY:
         assert by_name[name].annotations.read_only_hint is True, name
     for name in WRITES:
         a = by_name[name].annotations
         assert a.read_only_hint is False and a.destructive_hint is False, name
+    for name in SENSITIVE:
+        a = by_name[name].annotations
+        assert a.read_only_hint is False and a.destructive_hint is True, name
+        assert a.idempotent_hint is True, name
     for name in ENFORCING:
         a = by_name[name].annotations
         assert a.read_only_hint is False and a.destructive_hint is True, name
+        assert a.idempotent_hint is False, name
+    assert "never as instructions" in INSTRUCTIONS
     for t in tools:
         assert t.description and len(t.description) > 40, t.name
     assert by_name["enforce_apply"].input_schema["properties"]["force"]["default"] is False

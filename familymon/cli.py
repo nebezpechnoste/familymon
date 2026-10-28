@@ -21,13 +21,28 @@ def main(verbose: bool) -> None:
 
 
 def _ops(fn, *args, **kwargs):
-    """Call an ops function; a parent-facing OpsError becomes a click error."""
-    from familymon.ops import OpsError
+    """Call an ops function; a parent-facing OpsError becomes a click error.
+
+    `UnsafeNow` (the live-session guard) passes through untouched: the
+    commands that can hit it turn it into exit 3, which
+    familymon-enforce.service and the docs rely on."""
+    from familymon.ops import OpsError, UnsafeNow
 
     try:
         return fn(*args, **kwargs)
+    except UnsafeNow:
+        raise
     except OpsError as e:
         raise click.ClickException(str(e)) from None
+
+
+def _refuse(e, *, hint: str) -> None:
+    """Print an UnsafeNow refusal the way `enforce apply` always has, exit 3."""
+    click.echo(f"refusing to {e.action} — it would cut off an active session:", err=True)
+    for reason in e.reasons:
+        click.echo(f"  - {reason}", err=True)
+    click.echo(hint, err=True)
+    raise SystemExit(3) from None
 
 
 def _read_source(source: str) -> str:
@@ -759,13 +774,6 @@ def enforce_grp() -> None:
     """
 
 
-def _enforce_desired():
-    """Shared: load policy.yaml + Steam scan + today's grants -> desired settings."""
-    from familymon.ops import desired_settings
-
-    return _ops(desired_settings)
-
-
 def _echo_changes(changes) -> None:
     for c in changes:
         click.echo(f"  {c['setting']}:")
@@ -833,11 +841,7 @@ def enforce_apply(force: bool) -> None:
     try:
         r = _ops(apply_policy, force=force)
     except UnsafeNow as e:
-        click.echo("refusing to apply — it would cut off an active session:", err=True)
-        for reason in e.reasons:
-            click.echo(f"  - {reason}", err=True)
-        click.echo("re-run with --force to override, or wait for logout.", err=True)
-        raise SystemExit(3) from None
+        _refuse(e, hint="re-run with --force to override, or wait for logout.")
     if r["up_to_date"]:
         click.echo(f"{r['user']}: live state matches policy — nothing to do")
         return
@@ -973,15 +977,28 @@ def enforce_grant(
     --until widens today's allowed-hours window (expires on its own, never
     reverted by familymon-enforce.timer); --playtime adds game minutes.
     """
-    from familymon.ops import grant
+    from familymon.ops import UnsafeNow, grant
 
-    r = _ops(grant, user, until=until_, from_=from_, playtime=playtime, note=note)
+    try:
+        r = _ops(grant, user, until=until_, from_=from_, playtime=playtime, note=note)
+    except UnsafeNow as e:
+        _refuse(
+            e,
+            hint="the grant was not stored. Apply the pending policy first "
+            "(enforce plan, then enforce apply) or wait for logout.",
+        )
     if "hours" in r:
         h = r["hours"]
         click.echo(
             f"{user}: allowed until {h['end']} today ({h['start']}-{h['end']}); "
             f"{len(h['timekpr_changes'])} timekpr change(s) applied"
         )
+        if h["deferred"]:
+            click.echo(
+                "pending policy changes NOT applied (would cut the active session): "
+                + ", ".join(h["deferred"])
+                + " — enforce plan, then enforce apply"
+            )
     if "playtime_seconds" in r:
         click.echo(f"{user}: +{r['playtime_seconds']}s game time today")
 

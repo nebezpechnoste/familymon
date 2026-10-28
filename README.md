@@ -42,7 +42,7 @@ Parents supervising their own minor children, **openly**. The child knows the la
 
 What the code does:
 
-- Screenshots and metadata never leave the laptop. There is no upload, no cloud account, no telemetry.
+- Screenshots never leave the laptop. Titles, app names and classifications stay on it until the parent reads them: on the dashboard over the LAN, with the CLI over SSH, or through the MCP tools into the parent's AI agent, which may pass them on to the model provider it uses. There is no upload, no cloud account, no telemetry.
 - Messaging windows are redacted at capture time. `familymonctl health` fails if a screenshot with a chat present ever reaches disk unredacted.
 - Screenshots are deleted after 90 days by a daily job (`retention.screenshots_days` in `policy.yaml`; `0` keeps them). Capture rows and classifications stay, so the timeline keeps its history without the images.
 - Personal time: from an evening hour the parent picks (`personal_time` in `policy.yaml`) until the bedtime lock, no screenshots are taken and the dashboard shows only categories and durations, no app names or titles. Game time still counts.

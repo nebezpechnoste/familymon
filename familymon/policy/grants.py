@@ -19,6 +19,7 @@ same CLI for one obvious place to go, and logged as an Event.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, time
 from pathlib import Path
@@ -76,8 +77,21 @@ class GrantStore:
         return out
 
     def _save(self, grants: list[Grant]) -> None:
+        # Temp file + rename: the reconciler reads this file concurrently.
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.path.write_text(json.dumps({"grants": [asdict(g) for g in grants]}, indent=1))
+        tmp = self.path.with_name(f".{self.path.name}.tmp")
+        tmp.write_text(json.dumps({"grants": [asdict(g) for g in grants]}, indent=1))
+        os.replace(tmp, self.path)
+
+    def remove(self, grant: Grant) -> bool:
+        """Drop exactly `grant` (the one just added, when applying it failed);
+        the user's other grants stay. Returns whether it was there."""
+        grants = self._load()
+        keep = [g for g in grants if g != grant]
+        if len(keep) == len(grants):
+            return False
+        self._save(keep)
+        return True
 
     def add(self, user: str, start: time, end: time, *, now: datetime, note: str = "") -> Grant:
         if end < start:

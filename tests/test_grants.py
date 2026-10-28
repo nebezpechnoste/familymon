@@ -132,3 +132,13 @@ def test_until_today_defaults_start_to_now_and_rejects_past():
     assert s2 == time(22, 0)
     with pytest.raises(ValueError):
         until_today(time(21, 0), now=MON_2206)
+
+
+def test_store_remove_drops_only_that_grant(tmp_path):
+    store = GrantStore(tmp_path / "grants.json")
+    first = store.add("kid", time(22, 0), time(22, 29), now=MON_2206)
+    second = store.add("kid", time(22, 30), time(23, 0), now=MON_2206, note="later")
+    assert store.remove(second) is True
+    assert store._load() == [first]
+    assert store.remove(second) is False
+    assert not list(tmp_path.glob(".grants.json.tmp"))  # atomic write leaves no temp file

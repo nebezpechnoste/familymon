@@ -606,7 +606,7 @@ familymonctl enforce grant [--until HH:MM] [--from HH:MM] [--playtime DURATION] 
 
 | Argument / option | Type | Default | Meaning |
 |---|---|---|---|
-| `USER` | text | required | Account to grant to. Must equal the policy `user` for `--until`. |
+| `USER` | text | required | Account to grant to. Must equal the policy `user` (for `--playtime` as well). Otherwise: `policy user is 'kid', not '<user>'`, exit 1. |
 | `--until` | `HH:MM` | none | Extend today's allowed hours until this time (inclusive). |
 | `--from` | `HH:MM` | now | Grant start. |
 | `--playtime` | duration | none | Extra game minutes today, e.g. `20m` or `1h` (counter adjust). |
@@ -614,8 +614,9 @@ familymonctl enforce grant [--until HH:MM] [--from HH:MM] [--playtime DURATION] 
 
 - Root: effectively yes (writes `grants.json` and the DB, and calls timekpr). Class: TOUCHES-PROCESSES and WRITES-STATE. No dry-run and no `--force`.
 - At least one of `--until` or `--playtime` is required, otherwise ClickException. Both may be given; `--until` is processed first.
-- Durations: `2h30m`, `45m`, `90s`, or an integer or digits (seconds). An invalid duration is an error, exit 1. `--until` and `--from` must be `HH:MM` (`until must be HH:MM, got ...`).
-- `--until` path: stores the grant, recomputes the desired state, applies the timekpr changes with no safety guard (grants only widen), writes a `grant_hours` event. If the policy user differs from `USER`, or the policy is missing or unusable, it errors and drops `USER`'s grants for today again before touching timekpr. Output: `<user>: allowed until END today (START-END); N timekpr change(s) applied`.
+- Durations: `2h30m`, `45m`, `90s`, or an integer or digits (seconds). An invalid duration is an error, exit 1. `--until` and `--from` must be `HH:MM` (`until must be HH:MM (00:00-23:59), got ...`).
+- `--until` path: stores the grant, recomputes the desired state (policy plus grants) and runs the live-session guard that `enforce apply` runs, because applying the grant would also apply any policy change still pending on disk. If the whole plan is safe, it applies the timekpr changes and writes a `grant_hours` event. If the whole plan would cut the active session, only today's widened `allowed_hours[<today>]` change is applied and the rest is deferred. If the policy is missing or unusable, it errors. On any failure it removes only the grant it was adding; earlier grants of the day stay. Output: `<user>: allowed until END today (START-END); N timekpr change(s) applied`, plus, when something was deferred, `pending policy changes NOT applied (would cut the active session): <settings> — enforce plan, then enforce apply`.
+- Refusal, exit 3: when even today's window would not cover the current time (for example `--from` later today while a pending policy change excludes now), nothing is stored. The CLI prints the reasons and a hint to apply the pending policy first (`enforce plan`, then `enforce apply`) or wait for logout. The MCP error text starts `refusing to apply the grant — it would cut off an active session:`.
 - `--playtime` path: adds seconds to the timekpr counter (`timekpra --setplaytimeleft`) and writes a `grant_playtime` event. Output: `<user>: +Ns game time today`.
 - Parent decides: every grant. Do not grant on the kid's request alone.
 - Verify: [`enforce grants`](#enforce-grants), then `enforce show`. Undo: [`enforce revoke`](#enforce-revoke) (hours only; a playtime grant is a counter adjustment and has no revoke).
@@ -651,7 +652,7 @@ familymonctl enforce revoke USER
 - `USER`: required. No `--force`. Root: effectively yes. Class: TOUCHES-PROCESSES and WRITES-STATE (`grants.json`, timekpr). No event is written.
 - If narrowing would cut off an active session it removes the grants but leaves timekpr unchanged and prints `revoked N grant(s); timekpr NOT narrowed now (would cut the active session) — the reconciler converges once safe`; exit 0.
 - Otherwise prints `revoked N grant(s); M timekpr change(s) applied`.
-- Does not check that `USER` matches the policy `user`; use the policy user.
+- `USER` must be the policy `user`; otherwise `policy user is 'kid', not '<user>'`, exit 1, and nothing is changed.
 
 ```bash
 sudo familymonctl enforce revoke kid
@@ -771,8 +772,8 @@ familymonctl policy set SOURCE
 
 - Root: yes in practice. Class: WRITES-STATE.
 - Validates exactly as [`policy validate`](#policy-validate). Invalid: exit 1, `policy rejected: <errors joined by "; ">`; nothing is written.
-- Copies the current file to `policy.yaml.prev` (one level of undo, root-only 0600), then writes the document verbatim (comments kept) through a temp file and a rename, mode 0600, owner root. Writes a `policy_changed` event (`changed` top-level keys, `previous` path) when the DB exists.
-- Applies nothing. Output: `wrote <path> (previous kept at <path>.prev)`, then one `  <key>: <what makes it take effect>` line per changed top-level key, or `  no top-level key changed`. The texts follow [config.md](config.md) section 2; a key familymon does not know is reported as `unknown key` (usually a typo).
+- Copies the current file to `policy.yaml.prev` (one level of undo, root-only 0600), unless the new text is identical to the current file: then the existing `.prev` is kept, so a retry cannot overwrite the undo copy (the `previous` path in the result is the existing `.prev`, or null). Then writes the document verbatim (comments kept) through a temp file and a rename, mode 0600, owner root. Writes a `policy_changed` event (`changed` top-level keys, `previous` path) when the DB exists.
+- Applies nothing to timekpr: hours, limits, lockout and game budgets need `enforce plan` then `enforce apply`, while `user`, `personal_time`, `web_block` and `retention` are read by their own timers and act within minutes, `retention` irreversibly (it deletes screenshots). Output: `wrote <path> (previous kept at <path>.prev)`, then one `  <key>: <what makes it take effect>` line per changed top-level key, or `  no top-level key changed`. The texts follow [config.md](config.md) section 2; a key familymon does not know is reported as `unknown key` (usually a typo).
 - Next steps for `user`, `lockout`, `allowed_hours`, `daily_limits`, `games`: `enforce plan`, then `enforce apply` (or wait for the hourly reconciler).
 - Parent decides: every value in the policy. Undo: `sudo familymonctl policy set /var/lib/familymon/policy.yaml.prev` (this makes the current file the new `.prev`), then plan and apply again if enforced keys changed.
 
@@ -829,8 +830,8 @@ familymonctl config set NAME SOURCE
 | `SOURCE` | path, or `-` for stdin | required | The whole new file. An override replaces the bundled file entirely, so start from `config get`. |
 
 - Root: yes in practice. Class: WRITES-STATE.
-- Validation, before anything is written: the text must be a YAML mapping; then `schedule_extras.yaml` goes through the schedule extras loader, `messaging_apps.yaml` through the capture redaction loader (an empty document is rejected), `game_apps.yaml` may only have `window_classes` and `binaries` as lists of strings, and `domains_starter.yaml` and `title_brands.yaml` may only have known category names as keys, each a list of strings. A rejection: exit 1 with the loader's message; nothing is written.
-- Writes to `$FAMILYMON_CONFIG_DIR/<name>` when that variable is set, else `/etc/familymon/<name>`, through a temp file and a rename, mode 0644 (world-readable on purpose: the capture probe runs as the monitored user and reads `messaging_apps.yaml`). The previous override is copied to `<name>.prev` first. Writes a `config_changed` event (`name`, `previous` path) when the DB exists.
+- Validation, before anything is written: the text must be a YAML mapping; then `schedule_extras.yaml` goes through the schedule extras loader, `messaging_apps.yaml` through the capture redaction loader (an empty document, unknown keys, and a document with no window classes and no title patterns are rejected: the last would capture messaging windows to image), `game_apps.yaml` may only have `window_classes` and `binaries` as lists of strings, and `domains_starter.yaml` and `title_brands.yaml` may only have known category names as keys, each a list of strings. This is stricter than the loaders on purpose: they skip unknown keys and categories silently, so a typo would drop a whole section unnoticed. The real loader runs as well. A rejection: exit 1 with the loader's message; nothing is written.
+- Writes to `$FAMILYMON_CONFIG_DIR/<name>` when that variable is set, else `/etc/familymon/<name>`, through a temp file and a rename, mode 0644 (world-readable on purpose: the capture probe runs as the monitored user and reads `messaging_apps.yaml`). The previous override is copied to `<name>.prev` first, unless the new text is identical to the current override: then the existing `.prev` is kept. Writes a `config_changed` event (`name`, `previous` path) when the DB exists.
 - Output: `wrote <path> (previous kept at <path>.prev)` and `  takes effect: <text>`. For `schedule_extras.yaml` the text says to run [`schedule refresh`](#schedule-refresh).
 - The three files the deb ships to `/etc/familymon` are dpkg conffiles; an override written here is a local edit that dpkg keeps on upgrade.
 - Safety: `messaging_apps.yaml` is the privacy contract. Removing entries exposes chats to screenshots; parent decides. Undo: `sudo familymonctl config set <name> /etc/familymon/<name>.prev`.

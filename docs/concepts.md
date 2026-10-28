@@ -175,7 +175,7 @@ Points to keep straight:
 ### Safety rules for enforcement
 
 - **Safety:** changing allowed hours so the current hour is excluded while the kid is logged in would end the session. `enforce apply` refuses (exit 3) unless `--force`, if a session exists and either today's window excludes now or today's limit would shrink. Window changes are applied last in the plan for that reason.
-- One-off extensions use date-bound grants (`enforce grant`), never raw `timekpra --setallowedhours`. Raw changes are persistent and the hourly reconciler reverts them. Grants only widen today's hours and expire on their own.
+- One-off extensions use date-bound grants (`enforce grant`), never raw `timekpra --setallowedhours`. Raw changes are persistent and the hourly reconciler reverts them. Grants only widen today's hours and expire on their own; they run the same live-session guard as `enforce apply`.
 - The `timekpra --getuserinfo` command prints enabled booleans as `False` (a CLI bug in the version in use), so familymon reads via D-Bus.
 - timekpr PlayTime does nothing until the global PlayTime switches in `/etc/timekpr/timekpr.conf` (including the enhanced activity monitor) are enabled. Per-user settings are silently masked until then. Familymon does not edit that file; it is a manual prerequisite.
 - PlayTime masks are effectively full-match against process path and command line. The driver wraps bare `games.extra_masks` entries as `.*mask.*`. Flatpak apps appear as their `bwrap` wrapper.

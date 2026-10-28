@@ -33,7 +33,7 @@ Group-readable by `familymon` (the read-only dashboard's group): dirs 0750, file
 | `captures.db` (plus `-journal`, `-wal`, `-shm`) | `capture-supervise`, `classify`, `heartbeat-once`, enforcement commands, `policy set`, `config set` (events only) | SQLite DB, see section 4. The only database; holds captures, classifications and all events (section 5) |
 | `captures.db.corrupt-<YYYYmmdd-HHMMSS>` | DB self-recovery | the damaged original, kept, never deleted; `-journal`, `-wal`, `-shm` siblings are renamed with it |
 | `screenshots/<YYYY-MM-DD>/<capture_id>.png` | capture supervisor | one PNG per persisted capture; the DB stores only the path. Root-only: day directories 0700, files 0600. Day directories dated older than `retention.screenshots_days` (default 90) are deleted by `familymon-retention.timer` |
-| `schedule.yaml` | `schedule import`, `schedule refresh`, or by hand | keys `timezone`, `blocks`, optional `breaks`. Read by every consumer. `schedule import` and `schedule refresh` leave it root:`familymon` 0640 so the dashboard can read it; a hand-written file needs the same mode |
+| `schedule.yaml` | `schedule import`, `schedule refresh`, or by hand | keys `timezone`, `blocks`, optional `breaks`. Read by every consumer. `schedule import` and `schedule refresh` leave it root:`familymon` 0640 so the dashboard can read it; a hand-written file needs the same mode. Written through a temp file and a rename (atomic) |
 
 Root only (0600, owner root):
 
@@ -43,7 +43,7 @@ Root only (0600, owner root):
 | `policy.yaml.prev` | `policy set` | the policy as it was before the last `policy set`; one level of undo (`sudo familymonctl policy set /var/lib/familymon/policy.yaml.prev`). Absent until the first `policy set` that replaced an existing file |
 | `schedule.yaml.prev` | `schedule import`, `schedule refresh` | the schedule as it was before the last import or refresh; one level of undo (copy it back over `schedule.yaml` as root, keeping root:`familymon` 0640) |
 | `known_games.json.prev` | `enforce games --forget` | the remembered-games list before the last `--forget`; copy it back by hand as root |
-| `grants.json` | `enforce grant`, `enforce revoke` | `{"grants":[{user, day, start, end, created_at, note}]}`. Expired or other-day grants are pruned when active grants are evaluated (`GrantStore.active`) and when one is added; `enforce revoke` rewrites the file without the user's grants for today |
+| `grants.json` | `enforce grant`, `enforce revoke` | `{"grants":[{user, day, start, end, created_at, note}]}`. Expired or other-day grants are pruned when active grants are evaluated (`GrantStore.active`) and when one is added; `enforce revoke` rewrites the file without the user's grants for today. Written through a temp file and a rename (atomic) |
 | `playtime_charges.json` | `enforce chargeback` | `{user: {day, last_capture_id, charged_seconds_today}}`. `charged_seconds_today` resets on a new day; the `last_capture_id` watermark is kept across days, but is reset for today if it is above the DB's newest capture id (DB replaced, recovered or migrated) |
 | `notified.json` | `schedule notify-tick` | `{"<ISO date>": ["HH:MM\|subject", ...]}`; overwritten with only today's key; makes block-start notifications fire at most once per day. An entry is written only when the notification was delivered |
 | `warned.json` | `schedule notify-tick` | `{"<key>": "<ISO timestamp>"}`; entries from other days pruned; drives the live-warning cooldown. Written only when the warning was delivered |
@@ -77,7 +77,7 @@ Bundled defaults: `messaging_apps.yaml`, `game_apps.yaml`, `schedule_extras.yaml
 | Path | Contents | Mode |
 |---|---|---|
 | `/opt/familymon/venv` | bundled Python venv, built from `uv.lock` with the runtime extras `dashboard`, `analyze` and `mcp` (the MCP SDK, `mcp>=2.3`) | n/a |
-| `/usr/bin/familymonctl` | wrapper that runs `/opt/familymon/venv/bin/python3 -m familymon.cli` | 0755 |
+| `/usr/bin/familymonctl` | wrapper that runs `/opt/familymon/venv/bin/python3 -I -m familymon.cli` (isolated mode: the caller's current directory, `PYTHON*` variables and user site-packages cannot inject code into a root run; `FAMILYMON_*` variables still pass) | 0755 |
 | `/etc/familymon/messaging_apps.yaml` | conffile: window classes and title patterns that trigger redaction | 0644 |
 | `/etc/familymon/game_apps.yaml` | conffile: curated game window classes and binaries | 0644 |
 | `/etc/familymon/schedule_extras.yaml` | conffile: schedule exclusions, custom blocks, breaks | 0644 |
@@ -109,7 +109,7 @@ The dpkg conffiles are `/etc/familymon/messaging_apps.yaml`, `/etc/familymon/gam
 | `/etc/opt/chrome/policies/managed/familymon.json` | Chrome managed policy, written by `enforce web-block` as root (mode 0644). Written atomically via `/etc/opt/chrome/policies/.familymon.json.tmp` then rename. Deleted when `web_block` is disabled in `policy.yaml`. |
 | `/etc/familymon/<name>.prev` | the previous override, kept by `config set <name>` (one level of undo), mode as the override (0644). In `$FAMILYMON_CONFIG_DIR` instead when that is set |
 | `/etc/sudoers.d/familymon-mcp` | shipped by the deb (0440, conffile): lets members of `familymon-admin` start exactly `/usr/bin/familymonctl mcp` as root without a password. Nothing else is granted |
-| group `familymon-admin` | system group created empty by the postinst; its members (the parent only) may start the MCP server through the rule above. Check with `getent group familymon-admin` |
+| group `familymon-admin` | system group created empty by the postinst and left in place on purge (Debian convention for system groups); its members (the parent only) may start the MCP server through the rule above. Check with `getent group familymon-admin` |
 | `/etc/familymon/dashboard.env` | env file with `FAMILYMON_DASH_USER` and `FAMILYMON_DASH_PASS` (and optionally bind and port); root:root 0600, read by systemd as root. The dashboard unit is skipped if it is missing |
 | `/run/familymon/kwin/winlist-<random>.js` (temp) | the supervisor's per-tick KWin enumeration script, deleted after the tick (dev `capture-run` uses `familymon_winlist_*.js` in `/tmp`) |
 | `familymon_shot_*.png` (temp) | per-tick spectacle output, in the capture unit's private `/tmp`, deleted after reading |

@@ -22,7 +22,7 @@ The parent is assumed to operate familymon through an AI agent (see [../../AGENT
 2. **Lesson time is lesson time.** During a scheduled lesson the obvious distractions are blocked in the browser, open tabs on them are closed, other browsers and listed apps are closed, and anything that slips through (a game, a chat app) is flagged and the child is warned on the spot.
 3. **Limits that hold.** Allowed hours, daily budgets and game budgets are enforced by a root daemon the child can't stop, and browser games count against the game budget like native ones.
 4. **The child can't switch it off.** Everything that decides, records or enforces runs as root with state the child can't read; what can't be prevented from inside the child's own session is detected and shown.
-5. **Nothing leaves the laptop.** Screenshots, titles and classifications stay on the device. The parent reads them over the LAN.
+5. **Screenshots never leave the laptop.** Titles, app names and classifications stay on it until the parent reads them: over the LAN on the dashboard, over SSH with the CLI, or through the MCP tools into the parent's agent, which may pass them on to the model provider that agent uses. There is no upload, no cloud account and no telemetry.
 6. **Cheap to run, free in the long run.** Classification uses local heuristics; there is no paid API in the loop.
 7. **Operable in plain words.** The whole configuration can be derived from what the parent says, by an agent, with a preview before every change and a check after it.
 
