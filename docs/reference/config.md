@@ -68,12 +68,13 @@ Consequences:
 
 ### 1.5 dpkg conffiles
 
-The deb marks exactly these as conffiles, installed from `familymon/defaults/`:
+The deb marks exactly these as conffiles. The three YAMLs are installed from `familymon/defaults/`; the sudoers file is the rule behind `familymonctl mcp` ([mcp.md](mcp.md)):
 
 ```
 /etc/familymon/messaging_apps.yaml
 /etc/familymon/game_apps.yaml
 /etc/familymon/schedule_extras.yaml
+/etc/sudoers.d/familymon-mcp
 ```
 
 dpkg preserves local edits on upgrade (stated in the README and build script comments).
@@ -81,7 +82,7 @@ dpkg preserves local edits on upgrade (stated in the README and build script com
 Not conffiles:
 
 - `/usr/share/familymon/policy_example.yaml` is a template. Copy it to `state_dir()/policy.yaml` yourself.
-- `domains_starter.yaml` and `title_brands.yaml` are not installed to `/etc`. To override, create `/etc/familymon/<name>` by hand.
+- `domains_starter.yaml` and `title_brands.yaml` are not installed to `/etc`. To override, write `/etc/familymon/<name>` with `familymonctl config set <name>` (or by hand).
 - `dashboard.env` is not shipped. Create it.
 - `policy.yaml` and `schedule.yaml` live in the state dir.
 
@@ -104,6 +105,19 @@ Not conffiles:
 
 Policy files are re-read by every command on every run. No process caches `policy.yaml`.
 
+`familymonctl policy set` (and the `policy_set` MCP tool) applies nothing; it reports, for each changed top-level key, what makes the change take effect, from this table (`takes_effect` in the result):
+
+| Changed key | Reported as |
+|---|---|
+| `user`, `lockout`, `allowed_hours`, `daily_limits` | `enforce plan, then enforce apply (or the hourly reconciler)` |
+| `games` | the same, plus `charge_browser_games* take effect at the next chargeback tick` |
+| `web_block` | `live at the next web-block tick (every minute)` |
+| `retention` | `next retention run (daily); preview with retention --dry-run` |
+| `personal_time` | `live within a minute (capture and notify re-read it every tick)` |
+| anything else | `unknown key` (familymon ignores it; usually a typo) |
+
+`familymonctl config set <name>` (and `config_set`) reports one `takes effect` text per file, matching the rows above: `schedule_extras.yaml` not live (run `schedule refresh`), `messaging_apps.yaml` next capture tick, `game_apps.yaml` next game-library scan or a capture restart, `domains_starter.yaml` next web-block tick, notify tick and classify run, `title_brands.yaml` next process start of each consumer.
+
 ## 3. `policy.yaml`
 
 Location: `state_dir()/policy.yaml` (production: `/var/lib/familymon/policy.yaml`). Template: `/usr/share/familymon/policy_example.yaml`.
@@ -112,7 +126,8 @@ Loading:
 
 - Must be a YAML mapping. An empty file or non-mapping raises `PolicyError("policy file is not a mapping: ...")`.
 - A missing file gives `no policy at ...` from `enforce apply|plan`, `chargeback` and `web-block`.
-- Unknown top-level keys are silently ignored.
+- Unknown top-level keys are silently ignored. `policy validate` does not flag them either; `policy set` reports a changed unknown key as `unknown key`.
+- `familymonctl policy validate` runs every parser that reads the file (enforcement, `games.charge_browser_games_when`, `personal_time`, `web_block`, `retention`) and reports one error per failing section.
 
 ### 3.1 Top-level keys
 
@@ -218,10 +233,15 @@ web_block:
 
 | Step | Command | Root | Notes |
 |---|---|---|---|
+| Read | `familymonctl policy get` | root | The file as it is, comments included. `--json` adds the parsed meaning. |
+| Check | `familymonctl policy validate FILE` (or `-` for stdin) | no for your own file | Every parser that reads the file; one error per failing section; exit 1 when invalid. Shows the resolved per-day windows and limits. Show the parent that summary. |
+| Write | `familymonctl policy set FILE` (or `-`) | root | Validates again, keeps the old file as `policy.yaml.prev`, writes the whole document verbatim (mode 0600), writes a `policy_changed` event. Applies nothing; prints what makes each changed key take effect (section 2). |
 | Preview | `familymonctl enforce plan` | root or `timekpr` group | Prints the timekpra changes and any safety refusal. Never refuses. It may prune expired grants from `grants.json`. |
-| Apply | `familymonctl enforce apply` | root or `timekpr` group | Idempotent, writes only deltas, allowed hours last. |
-| Verify | `familymonctl enforce show kid` | root or `timekpr` group | Reads live timekpr state over D-Bus. |
-| Undo | edit `policy.yaml` back, then `apply` | same | No automatic rollback. |
+| Apply | `familymonctl enforce apply` | root or `timekpr` group | Idempotent, writes only deltas, allowed hours last. Writes a `policy_applied` event when something changed. |
+| Verify | `familymonctl enforce show` | root or `timekpr` group | Reads live timekpr state over D-Bus for the policy user (or a USER given). |
+| Undo | `familymonctl policy set /var/lib/familymon/policy.yaml.prev`, then `plan` and `apply` | root | One level only: each `policy set` overwrites `.prev`. Editing the file by hand also works but keeps no copy. |
+
+The same steps exist as MCP tools (`policy_get`, `policy_validate`, `policy_set`, `enforce_plan`, `enforce_apply`, `enforce_show`); see [mcp.md](mcp.md). Run each step separately and read its output before the next.
 
 Root: timekpr's admin surface needs root or `timekpr` group membership (same for `enforce grant`, `grants`, `revoke`). A non-root run uses its own `state_dir()`, so it reads a different `policy.yaml` and `grants.json` unless `FAMILYMON_STATE_DIR` is set.
 
@@ -308,7 +328,7 @@ Caveats:
 
 ## 5. `schedule_extras.yaml`
 
-Resolved via section 1.1 (normally `/etc/familymon/schedule_extras.yaml`, a conffile). Consumed only by `schedule import` and `schedule refresh`. Edits are not live: run `sudo familymonctl schedule refresh`. A missing file is treated as empty. A non-mapping top level raises `ValueError`. Unknown keys are ignored.
+Resolved via section 1.1 (normally `/etc/familymon/schedule_extras.yaml`, a conffile). Consumed only by `schedule import` and `schedule refresh`. Edits are not live: run `sudo familymonctl schedule refresh`. Read it with `familymonctl config get schedule_extras.yaml` and replace it with `sudo familymonctl config set schedule_extras.yaml FILE` (or `-`), which runs this loader before writing and keeps the previous override as `schedule_extras.yaml.prev`. A missing file is treated as empty. A non-mapping top level raises `ValueError`. Unknown keys are ignored.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
@@ -335,7 +355,7 @@ Conffile `/etc/familymon/messaging_apps.yaml`. Window metadata is always recorde
 | `window_classes` | list of str | Lowercased. A window is skipped if its lowercased class, or any underscore-separated segment of it, matches. |
 | `title_patterns` | list of regex | Compiled case-insensitive, matched with `.search` on the window title. An invalid regex raises `re.error` at load. |
 
-Both keys are optional. An empty file raises `AttributeError` (no `or {}` guard), so keep at least `window_classes: []`. Apply: next capture tick, or `sudo systemctl restart familymon-capture.service`.
+Both keys are optional. An empty file raises `AttributeError` (no `or {}` guard), so keep at least `window_classes: []`; `config set messaging_apps.yaml` rejects an empty file and an invalid regex before writing. Edit with `config get` / `config set` (previous override kept as `messaging_apps.yaml.prev`). Apply: next capture tick, or `sudo systemctl restart familymon-capture.service`.
 
 Safety: weakening this list exposes private messages to screenshots. Do not remove entries without the parent's decision.
 
@@ -354,7 +374,7 @@ Conffile `/etc/familymon/game_apps.yaml`. A curated list that supplements the in
 | `window_classes` | list of str | Lowercased. Matched against the whole window class or any underscore segment. |
 | `binaries` | list of str | Lowercased. Matched against the basename of the window process's executable path or of any of its command-line arguments. |
 
-An empty file gives empty lists (an unreadable file also does; the resolver always finds at least the bundled copy). Parse errors are not caught. The bundled file already lists common launchers and emulators; an override replaces it entirely, so copy it first. This example uses placeholder names. Apply: `sudo systemctl restart familymon-capture.service` (or wait for the 30-minute rescan). `enforce apply` re-scans on every run.
+An empty file gives empty lists (an unreadable file also does; the resolver always finds at least the bundled copy). Parse errors are not caught at load; `config set game_apps.yaml` checks first that only `window_classes` and `binaries` are present, each a list of strings, and keeps the previous override as `game_apps.yaml.prev`. The bundled file already lists common launchers and emulators; an override replaces it entirely, so start from `familymonctl config get game_apps.yaml`. This example uses placeholder names. Apply: `sudo systemctl restart familymon-capture.service` (or wait for the 30-minute rescan). `enforce apply` re-scans on every run.
 
 ```yaml
 window_classes: [example-launcher]
@@ -363,7 +383,7 @@ binaries: [example-game-bin]
 
 ## 8. `domains_starter.yaml` and `title_brands.yaml`
 
-Both are mappings of `category -> list`. Overrides go in `/etc/familymon/<name>` or `$FAMILYMON_CONFIG_DIR`. Copy the bundled file first, then edit, because an override replaces the bundled file entirely.
+Both are mappings of `category -> list`. Overrides go in `/etc/familymon/<name>` or `$FAMILYMON_CONFIG_DIR`. Start from the file in effect (`familymonctl config get <name>`), then edit, because an override replaces the bundled file entirely. Write it with `sudo familymonctl config set <name> FILE` (or `-`): it rejects a key that is not a known category and a value that is not a list of strings, and keeps the previous override as `<name>.prev`.
 
 | File | Value list | Matching | Consumers |
 |---|---|---|---|
@@ -373,7 +393,7 @@ Both are mappings of `category -> list`. Overrides go in `/etc/familymon/<name>`
 Rules:
 
 - Bundled categories: `domains_starter.yaml` has `video, messaging, social, games, code, school, productivity`. `title_brands.yaml` has `video, social, messaging, code, school, productivity, games`.
-- The classifier skips unknown category names silently. `web-block` keeps all keys but only blocks the categories named in `web_block.categories`.
+- The classifier skips unknown category names silently (a hand-written override can contain them; `config set` refuses them). `web-block` keeps all keys but only blocks the categories named in `web_block.categories`.
 - Empty files are tolerated. A non-mapping raises (`PolicyError` in `web-block`).
 - Apply: next tick or process start (see section 2). To relabel history after a change, use `familymonctl classify --redo`, which discards heuristic-sourced classifications and re-runs the heuristics over the whole history (VLM and bootstrap labels are kept).
 
@@ -434,6 +454,7 @@ Safety: the default bind is `127.0.0.1`. Binding to `0.0.0.0` or a LAN address e
 ## 11. Common mistakes
 
 - Editing `policy.yaml` under `/etc/familymon` or `$FAMILYMON_CONFIG_DIR`: ignored. It lives in the state dir.
+- Sending a fragment (only the key you changed) to `policy set` or `config set`: the document replaces the whole file. For `policy.yaml` a fragment usually fails validation (`user`, `allowed_hours` and `daily_limits` are required); one that passes silently drops every other section. Read the whole file with `policy get` or `config get`, edit it, send the whole file back (comments are kept verbatim).
 - Expecting `enforce apply` to pick up `web_block` or chargeback keys: those run on their own timers.
 - Expecting `schedule_extras.yaml` edits to be live: run `schedule refresh`.
 - Unquoted `HH:MM` times in schedules.

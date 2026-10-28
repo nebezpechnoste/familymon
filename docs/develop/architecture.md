@@ -10,8 +10,11 @@ CLI entry point: `familymonctl = "familymon.cli:main"` (`pyproject.toml`). Every
 
 | Module | Role |
 |---|---|
-| `cli.py` | All `familymonctl` commands (capture, capture-supervise, capture-probe, classify, health, heartbeat, migrate-state, events, schedule, conflicts, enforce, extension, dashboard). |
+| `cli.py` | All `familymonctl` commands (capture, capture-supervise, capture-probe, classify, health, heartbeat, migrate-state, events, schedule, conflicts, enforce, extension, dashboard, plus `policy`, `config`, `personal-time`, `mcp` and `--json` output on several read commands). |
 | `config.py` | `state_dir()`, `monitored_user()` (`FAMILYMON_USER`, else `user:` in `policy.yaml`), `user_state_dir(user)` (only for `migrate-state`), DB/screenshot/schedule/policy paths, `config_file(name)` override order, `capture_interval_seconds()`. |
+| `ops.py` | The operations layer: one function per operator operation (status, health, events, timeline, schedule, policy get/validate/set, config get/set, enforce plan/apply/show, grants, games), returning plain data. The CLI commands and the MCP tools both call these, so the two surfaces cannot drift. |
+| `mcp_server.py` | The MCP server (`familymonctl mcp`): stdio transport, 21 typed tools over `ops.py`, each with read-only / destructive annotations. Needs the optional `mcp` extra (bundled in the deb). Tool list: [../reference/mcp.md](../reference/mcp.md). |
+| `timeline.py` | Pure day-building helpers (timeline segments with personal-time masking), shared by the dashboard, the CLI and the MCP `timeline` tool; moved out of `dashboard/app.py`. |
 | `notify.py` | `notify-send` wrapper (`send`) and root-side `send_as(user, ...)` via `runuser` and the kid's session bus. |
 | `heartbeat.py` | Capture freshness check (`ok`/`stale`/`dead`/`never`, plus `idle` when the kid has no session), `heartbeat` Event writer, `latest_heartbeat` (adds the dashboard-only `watcher_down`) and `capture_problems` (counts of `capture_failed` / `capture_tamper`). |
 | `health.py` | Metrics behind `familymonctl health`. |
@@ -94,6 +97,7 @@ Capture to enforcement:
 |---|---|
 | Root (systemd system units) | `capture-supervise`, `classify`, `heartbeat-once`, `schedule notify-tick`, `enforce apply`, `enforce chargeback`, `enforce web-block`, plus every manual operator command (`schedule import/refresh`, `enforce grant/revoke`, `health`, `events`). State is `/var/lib/familymon` (root:`familymon` 0750). |
 | The kid, one tick at a time | `capture-probe`, started by the supervisor through `setpriv --reuid=<uid> --regid=<gid> --init-groups --no-new-privs -- env -i ... python -I -m familymon.cli capture-probe`. It is the only familymon code that runs in the kid's session. It writes no state and is non-dumpable. |
+| Root, per SSH session | `familymonctl mcp`: the MCP server, started by the parent's agent as `ssh kid-laptop sudo -n familymonctl mcp` (allowed without a password for the `familymon-admin` group by `/etc/sudoers.d/familymon-mcp`). Speaks the protocol on stdin/stdout, listens on nothing, lives only as long as the SSH session, and runs the same `ops.py` functions as the operator commands. |
 | `familymon` system user | `dashboard`, read-only: group access to the DB and the schedule, nothing else, with systemd sandboxing. |
 | Inside Chrome | The extension; no root. |
 

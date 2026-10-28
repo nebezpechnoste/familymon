@@ -36,16 +36,16 @@ State directory, first match wins:
 2. `/var/lib/familymon` when the effective uid is 0 (production)
 3. `${XDG_STATE_HOME:-~/.local/state}/familymon` (dev runs only)
 
-Under it: `captures.db`, `screenshots/`, `schedule.yaml`, `policy.yaml`. The `enforce` commands also use `grants.json`, `playtime_charges.json` and `known_games.json`; `schedule notify-tick` uses `notified.json` and `warned.json`.
+Under it: `captures.db`, `screenshots/`, `schedule.yaml`, `policy.yaml` (and `policy.yaml.prev`, the copy `policy set` keeps). The `enforce` commands also use `grants.json`, `playtime_charges.json` and `known_games.json`; `schedule notify-tick` uses `notified.json` and `warned.json`.
 
 The monitored account is `$FAMILYMON_USER`, else the `user:` key of `policy.yaml`. Only `migrate-state` still looks at the kid's home (`<home of kid>/.local/state/familymon`, where releases before the root deployment kept their data).
 
-Config files (`schedule_extras.yaml`, `domains_starter.yaml`, ...) resolve in order: `$FAMILYMON_CONFIG_DIR/<name>`, `/etc/familymon/<name>`, bundled defaults.
+Config files (`schedule_extras.yaml`, `domains_starter.yaml`, ...) resolve in order: `$FAMILYMON_CONFIG_DIR/<name>`, `/etc/familymon/<name>`, bundled defaults. [`config set`](#config-set) writes its override to `$FAMILYMON_CONFIG_DIR` when that is set, else to `/etc/familymon`.
 
 | Variable | Default | Used by |
 |---|---|---|
 | `FAMILYMON_STATE_DIR` | see above | all |
-| `FAMILYMON_CONFIG_DIR` | unset | config lookup |
+| `FAMILYMON_CONFIG_DIR` | unset | config lookup; `config set` target |
 | `FAMILYMON_USER` | `user:` in `policy.yaml` | `capture-supervise`, `heartbeat-once`, `migrate-state`, `schedule notify-tick` (the monitored account) |
 | `FAMILYMON_INTERVAL` | `60` (seconds) | `capture-run`, `capture-supervise`, `conflicts` (duration estimate) |
 | `FAMILYMON_DASH_USER`, `FAMILYMON_DASH_PASS` | none, both required | `dashboard` |
@@ -53,6 +53,10 @@ Config files (`schedule_extras.yaml`, `domains_starter.yaml`, ...) resolve in or
 | `FAMILYMON_DASH_PORT` | `8765` | `dashboard` |
 
 Safety: a non-root run uses `~/.local/state/familymon`, which is a separate DB from `/var/lib/familymon`. Run production commands with `sudo`; a non-root run silently reports on a dev state dir.
+
+## JSON output
+
+`--json` is accepted by `status`, `health`, `events`, `personal-time`, `schedule show`, `enforce show`, `enforce plan`, `enforce grants`, `enforce games` (the listing; ignored with `--forget`), `policy get` and `policy validate`. It prints the return value of the function in `familymon/ops.py` that the command calls, verbatim, through `familymon.ops.to_json` (indent 1, sorted keys). The matching MCP tool returns the same object ([mcp.md](mcp.md)). Exit codes are the same as without `--json`: `health --json` still exits 2 or 4, `policy validate --json` exits 1 when the document is invalid. Errors are not JSON: they are click errors on stderr, exit 1.
 
 ## Index
 
@@ -85,6 +89,13 @@ Safety: a non-root run uses `~/.local/state/familymon`, which is a separate DB f
 | [`enforce games`](#enforce-games) | READ-ONLY, or WRITES-STATE with `--forget` | yes in practice | itself |
 | [`enforce revoke`](#enforce-revoke) | TOUCHES-PROCESSES, WRITES-STATE | effectively yes | none |
 | [`enforce web-block`](#enforce-web-block) | TOUCHES-PROCESSES, WRITES-STATE | yes for a real run | `--dry-run` |
+| [`policy get`](#policy-get) | READ-ONLY | yes in practice | itself |
+| [`policy validate`](#policy-validate) | READ-ONLY | yes in practice for the live policy | itself |
+| [`policy set`](#policy-set) | WRITES-STATE | yes in practice | `policy validate` |
+| [`config list`](#config-list) | READ-ONLY | no | itself |
+| [`config get`](#config-get) | READ-ONLY | no | itself |
+| [`config set`](#config-set) | WRITES-STATE | yes in practice (`/etc/familymon`) | `config get`; validates before writing |
+| [`mcp`](#mcp) | TOUCHES-PROCESSES (long-running stdio server); its tools span all three classes | yes in production (`sudo`, `familymon-admin` group) | none |
 | [`extension build`](#extension-build) | WRITES-STATE (files only) | no | none |
 
 Command tree:
@@ -93,9 +104,15 @@ Command tree:
 familymonctl [-v]
   status | capture-once | capture-run | capture-supervise | capture-probe (hidden) | classify | health
          | heartbeat-once | migrate-state | events | retention | personal-time | conflicts | dashboard
+  mcp
   schedule  {import, refresh, show, notify-tick}
   enforce   {show, plan, apply, chargeback, grant, grants, games, revoke, web-block}
+  policy    {get, validate, set}
+  config    {list, get, set}
   extension {build}
+
+--json on: status, health, events, personal-time, schedule show,
+           enforce {show, plan, grants, games}, policy {get, validate}
 ```
 
 ## Exit codes
@@ -109,21 +126,30 @@ familymonctl [-v]
 | `health` | 2 | privacy violation (stderr message) |
 | `health` | 4 | DB integrity not `ok` (stderr message) |
 | `enforce apply` | 3 | refused: would cut off an active session, no `--force` |
+| `policy validate` | 1 | the document is invalid (one `! <error>` line per failing section on stderr; with `--json` the result on stdout) |
+| `policy set`, `config set` | 1 | rejected by validation; nothing written |
+| `mcp` | 0 | the client closed stdin (the server runs until then) |
+| `mcp` | 1 | the `mcp` Python extra is not installed |
 
-Note that `health` exit 2 and click's usage-error exit 2 share a number; a usage error prints click's usage text instead of the privacy message.
+Note that `health` exit 2 and click's usage-error exit 2 share a number; a usage error prints click's usage text instead of the privacy message. `health --json` uses the same codes.
 
 ---
 
 ## status
 
-Print runtime status.
+Print runtime status: versions, state dir, what exists there.
 
 ```
-familymonctl status
+familymonctl status [--json]
 ```
 
-- No options. Root: no. READ-ONLY. It does not open the DB.
-- Prints `state_dir`, `db_path` with `exists=`, and `screenshots_dir` with `exists=`.
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `--json` | flag | off | Print the result of `familymon.ops.status_summary` (the `status` MCP tool) as JSON. |
+
+- Root: no. READ-ONLY. It does not open the DB. It asks `dpkg-query` for the installed package version and reads `policy.yaml` for the monitored user.
+- Text output, one line each: `version: <package version>` (with ` (deb <version>)` when installed from the deb), `state_dir`, `db_path` with `exists=`, `screenshots_dir` with `exists=`, `policy: <path> (exists=...)`, `schedule: <path> (exists=...)`, `monitored user: <user>` or `(none: no policy user)`.
+- JSON keys: `version`, `package_version`, `uid`, `state_dir`, `config_dir`, `monitored_user`, and `{path, exists}` objects `db`, `screenshots_dir`, `policy`, `schedule`.
 - Use it to confirm which state directory a shell resolves to before running anything else.
 
 ```bash
@@ -213,14 +239,18 @@ familymonctl classify --redo
 Print a data-health report. Exits non-zero on a privacy violation. Run at the start of each iteration, before shipping changes.
 
 ```
-familymonctl health
+familymonctl health [--json]
 ```
 
-- No options. Root: yes in practice (the DB is root-owned). READ-ONLY on data, with one caveat: opening the DB runs an integrity check and may auto-recover a damaged DB (damaged file set aside, recovery attempted, a `db_recovered` event written).
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `--json` | flag | off | Print the result of `familymon.ops.health_summary` as JSON (`ok`, `exit_code`, `report`, `warnings`, `failures`, `heartbeat`, `capture_problems_today`) and exit with `exit_code`. |
+
+- Root: yes in practice (the DB is root-owned). READ-ONLY on data, with one caveat: opening the DB runs an integrity check and may auto-recover a damaged DB (damaged file set aside, recovery attempted, a `db_recovered` event written).
 - Reads `db_path()` and `screenshots_dir()`.
-- Report lines: as of, total captures, last 1h/24h, last capture age, largest gap 24h, classified 24h, dedup 24h (`n/a` when none eligible), msg full-skips24h, screenshots (count and MB), categories 24h.
+- Report lines: as of, total captures, last 1h/24h, last capture age, largest gap 24h, classified 24h, dedup 24h (`n/a` when none eligible), msg full-skips24h, screenshots (count and MB), categories 24h, `heartbeat: <status> (session <session>)` (the newest heartbeat event, else plain capture freshness).
 - Soft warnings on stdout (exit code unchanged): capture stale (last capture older than 180 s), a gap over 300 s in 24h, messaging full-skips over 10% of captures, `! DB was auto-recovered: ...`.
-- Exit 2: privacy violation (an un-redacted screenshot exists for a capture with a messaging window present). Checked and exited before the integrity check.
+- Exit 2: privacy violation (an un-redacted screenshot exists for a capture with a messaging window present), message on stderr. Checked before the integrity check; a privacy violation hides an integrity failure.
 - Exit 4: DB integrity is not `ok`.
 - Success lines: `privacy check:    OK (...)` and `db integrity:     ok`.
 
@@ -288,12 +318,13 @@ familymonctl retention [--dry-run] [--days N]
 Show today's personal-time window (`personal_time` in `policy.yaml`, with active grants folded in) and what it covered.
 
 ```
-familymonctl personal-time [--day YYYY-MM-DD]
+familymonctl personal-time [--day YYYY-MM-DD] [--json]
 ```
 
 | Option | Type | Default | Meaning |
 |---|---|---|---|
-| `--day` | date | today | Day to count hidden captures for. The window shown is always today's. |
+| `--day` | date | today | Day to count hidden captures for. The window shown is always today's. An invalid value is an error, exit 1 (`day must be YYYY-MM-DD, ...`). |
+| `--json` | flag | off | JSON keys `now`, `window` (`start`, `end`, `ends_at_bedtime`, `label`, or null), `active_now`, `day`, `hidden_captures`, `hidden_game_captures`, `hidden_game_minutes` (the counts are 0 when there is no DB). |
 
 - Root: yes in practice (reads `policy.yaml`, `grants.json` and the DB, read-only). Class: READ-ONLY.
 - Output: `personal time today: 20:00–22:00 (ends at the bedtime lock)` or `personal time today: none`; then `now HH:MM: in personal time (...)` or `now HH:MM: outside personal time (full capture)`; then, when a DB exists, `hidden captures on <day>: N (games: G, about M min)`. The minutes are `G` times `$FAMILYMON_INTERVAL`.
@@ -304,17 +335,18 @@ familymonctl personal-time [--day YYYY-MM-DD]
 List the day's operational events from the capture DB.
 
 ```
-familymonctl events [--day YYYY-MM-DD] [--kind TEXT]...
+familymonctl events [--day YYYY-MM-DD] [--kind TEXT]... [--json]
 ```
 
 | Option | Type | Default | Meaning |
 |---|---|---|---|
-| `--day` | text | today | Day to list. An invalid value raises a ValueError traceback. |
+| `--day` | text | today | Day to list. An invalid value is an error, exit 1 (`day must be YYYY-MM-DD, ...`). |
 | `--kind` | text, repeatable | all kinds except `heartbeat` | Only these kinds, e.g. `--kind capture_failed --kind capture_tamper`. Give `--kind heartbeat` to see heartbeats. |
+| `--json` | flag | off | JSON keys `day`, `count`, `events` (each `at`, `kind`, `data`). |
 
 - Root: needed in practice (the DB is not readable by the kid). READ-ONLY: opens the DB with the read-only engine, so it never triggers recovery.
 - Output: one line per event, `HH:MM:SS  <kind>  <data as JSON>`, then `N event(s) on <date>`. A missing DB is an error.
-- Kinds you may see: `capture_failed`, `capture_tamper`, `heartbeat`, `db_recovered`, `playtime_chargeback`, `grant_hours`, `grant_playtime`, `web_block`, `lesson_close` (see [files-and-units.md](files-and-units.md)).
+- Kinds you may see: `capture_failed`, `capture_tamper`, `heartbeat`, `db_recovered`, `playtime_chargeback`, `screenshots_pruned`, `grant_hours`, `grant_playtime`, `policy_changed`, `config_changed`, `policy_applied`, `web_block`, `lesson_close` (see [files-and-units.md](files-and-units.md)).
 
 ```bash
 sudo familymonctl events --day 2026-10-19
@@ -387,7 +419,9 @@ familymonctl schedule import [--format [kingsinterhigh]] SOURCE
 | `--format` | choice `kingsinterhigh` | `kingsinterhigh` | Timetable export format. It is the only format. |
 
 - Root: yes in practice. Class: WRITES-STATE: overwrites `/var/lib/familymon/schedule.yaml`.
-- Reads `schedule_extras.yaml` (excluded subjects, extra blocks, breaks) and applies it over the parsed lessons.
+- Reads `schedule_extras.yaml` (excluded subjects, extra blocks, breaks) and applies it over the parsed lessons. An unusable extras file is an error (`schedule_extras.yaml is unusable: ...`).
+- Refuses, exit 1, and keeps the current schedule when the file is not JSON (`<SOURCE> is not JSON: ...`), when it is not understood as the format (`timetable export not understood as kingsinterhigh: ...`), or when it yields no lessons (`... no lessons found in it (the current schedule is kept)`).
+- Before writing, copies the current `schedule.yaml` to `schedule.yaml.prev` (one level of undo; copy it back by hand as root).
 - Output: `imported N block(s) -> path (timezone: ...; X school, Y extra, excluded subjects: ...|none; Z break(s))`, then one `  break: LABEL (cats blocks suspended)` line per break, with `[in progress — no lessons today]` when a break covers today.
 - Safety: copy the old file first (`sudo cp /var/lib/familymon/schedule.yaml{,.bak}`); the import overwrites it. Every consumer reads this one file.
 - Undo: re-import the previous export. There is no dry-run.
@@ -406,19 +440,23 @@ familymonctl schedule refresh
 
 - No options. Root: yes in practice. Class: WRITES-STATE (rewrites `/var/lib/familymon/schedule.yaml`).
 - Keeps only blocks with category `school` and the timezone, then reapplies extras.
-- No schedule: ClickException, exit 1 (`no schedule at ... — run 'familymonctl schedule import' first`).
+- No schedule: ClickException, exit 1 (`no schedule at ... — run 'familymonctl schedule import' first`). An unusable extras file: exit 1 (`schedule_extras.yaml is unusable: ...`), schedule unchanged.
 - Output: `refreshed N block(s) -> path (...)` plus break lines.
-- Use after editing `/etc/familymon/schedule_extras.yaml`.
+- Use after changing `schedule_extras.yaml` (with [`config set`](#config-set) or by hand). Keeps the previous file as `schedule.yaml.prev`, like `schedule import`.
 
 ### schedule show
 
 Print the current weekly schedule.
 
 ```
-familymonctl schedule show
+familymonctl schedule show [--json]
 ```
 
-- No options. Root: yes in practice (the file is in `/var/lib/familymon`). READ-ONLY.
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `--json` | flag | off | JSON keys `path`, `exists`, `timezone`, `blocks`, `breaks` (each with `label` and `in_progress`), `count`, `by_category`. Before the first import: `exists: false` and empty lists. |
+
+- Root: yes in practice (the file is in `/var/lib/familymon`). READ-ONLY.
 - No schedule: prints a hint and exits 0 (not an error).
 - Output: blocks grouped by day as `HH:MM-HH:MM  category subject [notify]`, then `N block(s) total` and breaks.
 
@@ -457,8 +495,8 @@ Drive timekpr-next from the enforcement policy (`policy.yaml`). Runs on the mach
 
 All commands that compute a desired state first:
 
-1. Read `policy.yaml` from the state directory. Missing: `no policy at <path> — copy familymon/defaults/policy_example.yaml (installed: /usr/share/familymon/policy_example.yaml) there first`.
-2. Resolve the policy `user` with the system user database. Unknown user: ClickException.
+1. Read `policy.yaml` from the state directory. Missing: `no policy at <path> — write one first (familymonctl policy set, or copy /usr/share/familymon/policy_example.yaml there)`. Unparsable: `policy.yaml is unusable: ...`. Both exit 1.
+2. Resolve the policy `user` with the system user database. Unknown user: ClickException (`user '<name>' does not exist`).
 3. Scan that user's Steam library and build the timekpr settings.
 4. Fold in today's active grants from `grants.json`.
 
@@ -468,17 +506,23 @@ Parent decides: every value in `policy.yaml` is policy. Agents apply what the pa
 
 ### enforce show
 
-Print the live timekpr state for USER (read over D-Bus).
+Print the live timekpr state for USER (default: the policy's user), read over D-Bus.
 
 ```
-familymonctl enforce show USER
+familymonctl enforce show [--json] [USER]
 ```
 
-- `USER`: required. Does not read `policy.yaml`. Root or `timekpr` group (help text). READ-ONLY.
-- Output: user, active sessions, lockout, allowed weekdays; per day mon to sun the allowed-hours span and `limit=Ns`; whether playtime is enabled and, if so, the playtime limits and `activity: mask [description]` lines.
+| Argument / option | Type | Default | Meaning |
+|---|---|---|---|
+| `USER` | text | the policy `user` | Account to show. Without it `policy.yaml` is read for `user:`; no policy is an error (`no policy at <path>; give a user name explicitly`), as is a policy without `user` (`policy.yaml has no 'user'`). |
+| `--json` | flag | off | JSON keys `user`, `active_sessions`, `lockout`, `allowed_weekdays`, `allowed_hours` and `daily_limits` (per full day name), `playtime` (`enabled`, `daily_limits`, `activities` with `mask` and `description`). |
+
+- Root or `timekpr` group (help text). READ-ONLY.
+- Output: user, active sessions, lockout, allowed weekdays; per day mon to sun the allowed-hours span (`HH:00-HH:59` for a contiguous run of whole hours, else timekpr's spelling, `(none)` when empty) and `limit=unlimited` or `limit=<n>s` (`unlimited` means 86400 s or more); whether playtime is enabled and, if so, the playtime limits (same labels, `;`-separated) and `activity: mask [description]` lines.
 
 ```bash
-sudo familymonctl enforce show kid
+sudo familymonctl enforce show
+sudo familymonctl enforce show --json kid
 ```
 
 ### enforce plan
@@ -486,10 +530,14 @@ sudo familymonctl enforce show kid
 Dry run: show what `apply` would change (no writes).
 
 ```
-familymonctl enforce plan
+familymonctl enforce plan [--json]
 ```
 
-- No options. READ-ONLY. Reads `policy.yaml`, the Steam library, `grants.json` and live D-Bus state.
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `--json` | flag | off | JSON keys `user`, `changes` (each `setting`, `live`, `desired`), `count`, `up_to_date`, `safe_now`, `reasons`. |
+
+- READ-ONLY. Reads `policy.yaml`, the Steam library, `grants.json` and live D-Bus state.
 - Nothing to change: `<user>: live state matches policy — nothing to do`.
 - Otherwise: `<user>: N change(s) needed` and per change `<setting>: live: ... desired: ...`.
 - If applying now would be unsafe it prints `!! applying NOW would be unsafe:` with reasons and a note that `apply` refuses without `--force`. Exit code stays 0.
@@ -511,12 +559,12 @@ familymonctl enforce apply [--force]
 |---|---|---|---|
 | `--force` | flag | off | Apply even if it would cut off an active session right now. |
 
-- Root or `timekpr` group (help text). Class: TOUCHES-PROCESSES (changes are made by running `timekpra`, one call per change, aborting on the first failure). Writes no familymon state and no audit event.
+- Root or `timekpr` group (help text). Class: TOUCHES-PROCESSES (changes are made by running `timekpra`, one call per change, aborting on the first failure). When it applied something and the DB exists it writes a `policy_applied` event (`user`, `changes` as setting names, `forced`); nothing when up to date or refused.
 - No changes: prints `nothing to do`, exit 0.
 - Unsafe without `--force`: prints reasons to stderr and exits 3 (`refusing to apply — it would cut off an active session`).
 - Otherwise prints the changes, applies them and prints `applied N change(s) to <user>`.
 - Safety: narrowing allowed hours to exclude the current hour while the kid is logged in ends the session. Do not pass `--force` unless the parent said so; otherwise wait for logout. `familymon-enforce.service` runs this hourly and will show failed on exit 3.
-- Preview: `enforce plan`. Verify: `enforce show USER` after a few seconds (timekpr may apply some changes on its own polling interval; the interval is not stated in this repo's code). Undo: edit `policy.yaml` and apply again.
+- Preview: `enforce plan`. Verify: `enforce show` after a few seconds (timekpr may apply some changes on its own polling interval; the interval is not stated in this repo's code). Undo: restore the policy (for example [`policy set`](#policy-set) with `policy.yaml.prev`) and apply again.
 - For a one-off exception use [`enforce grant`](#enforce-grant), never a raw `timekpra --setallowedhours` (persistent, and the reconciler reverts it).
 
 ```bash
@@ -566,11 +614,11 @@ familymonctl enforce grant [--until HH:MM] [--from HH:MM] [--playtime DURATION] 
 
 - Root: effectively yes (writes `grants.json` and the DB, and calls timekpr). Class: TOUCHES-PROCESSES and WRITES-STATE. No dry-run and no `--force`.
 - At least one of `--until` or `--playtime` is required, otherwise ClickException. Both may be given; `--until` is processed first.
-- Durations: `2h30m`, `45m`, `90s`, or an integer or digits (seconds). An invalid duration raises a `PolicyError` traceback.
-- `--until` path: stores the grant, recomputes the desired state, applies the timekpr changes with no safety guard (grants only widen), writes a `grant_hours` event. If the policy user differs from `USER` it errors after the grant was stored. Output: `<user>: allowed until END today (START-END); N timekpr change(s) applied`.
+- Durations: `2h30m`, `45m`, `90s`, or an integer or digits (seconds). An invalid duration is an error, exit 1. `--until` and `--from` must be `HH:MM` (`until must be HH:MM, got ...`).
+- `--until` path: stores the grant, recomputes the desired state, applies the timekpr changes with no safety guard (grants only widen), writes a `grant_hours` event. If the policy user differs from `USER`, or the policy is missing or unusable, it errors and drops `USER`'s grants for today again before touching timekpr. Output: `<user>: allowed until END today (START-END); N timekpr change(s) applied`.
 - `--playtime` path: adds seconds to the timekpr counter (`timekpra --setplaytimeleft`) and writes a `grant_playtime` event. Output: `<user>: +Ns game time today`.
 - Parent decides: every grant. Do not grant on the kid's request alone.
-- Verify: [`enforce grants`](#enforce-grants), then `enforce show USER`. Undo: [`enforce revoke`](#enforce-revoke) (hours only; a playtime grant is a counter adjustment and has no revoke).
+- Verify: [`enforce grants`](#enforce-grants), then `enforce show`. Undo: [`enforce revoke`](#enforce-revoke) (hours only; a playtime grant is a counter adjustment and has no revoke).
 
 ```bash
 sudo familymonctl enforce grant kid --until 21:30 --note "family event"
@@ -582,10 +630,14 @@ sudo familymonctl enforce grant kid --playtime 30m --note "weekend"
 List today's active one-off grants.
 
 ```
-familymonctl enforce grants
+familymonctl enforce grants [--json]
 ```
 
-- No options. READ-ONLY. Reads `grants.json` from the resolved state directory (use the same user, usually root, that created the grants).
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `--json` | flag | off | JSON keys `grants` (each `user`, `day`, `start`, `end`, `note`) and `count`. |
+
+- READ-ONLY. Reads `grants.json` from the resolved state directory (use the same user, usually root, that created the grants).
 - Output: `no active grants`, or one line per grant: `  user: day start-end  note`.
 
 ### enforce revoke
@@ -610,16 +662,18 @@ sudo familymonctl enforce revoke kid
 List the game directories familymon budgets: the ones remembered in `known_games.json` plus whatever is installed now.
 
 ```
-familymonctl enforce games [--forget DIR]...
+familymonctl enforce games [--forget DIR]... [--json]
 ```
 
 | Option | Type | Default | Meaning |
 |---|---|---|---|
 | `--forget` | directory, repeatable | none | Stop treating this remembered game dir as a game. |
+| `--json` | flag | off | JSON keys `games` (each `dir`, `installed`) and `count`. Ignored with `--forget`. |
 
 - Root: needed in practice (`known_games.json` is root-only). Without `--forget` it is READ-ONLY and prints one line per dir, adding `(not installed now)` for dirs that no longer exist.
 - A game seen installed stays on the list after it disappears from the Steam library, so hiding a game's files does not remove its PlayTime mask. Only the parent removes one, with `--forget`. A dir that is still installed is re-added on the next scan. A dir that is not remembered is an error.
 - The next `enforce apply` (hourly) updates timekpr's masks.
+- `--forget` copies `known_games.json` to `known_games.json.prev` before rewriting it (one level of undo, by hand as root).
 - Parent decides which games stay on the budget.
 
 ```bash
@@ -656,6 +710,153 @@ sudo familymonctl enforce web-block --dry-run
 
 ---
 
+## policy
+
+Read, validate and replace `policy.yaml` in place, without copying files around. Keys are in [config.md](config.md) section 3. These commands only read or write the file; nothing here talks to timekpr.
+
+### policy get
+
+Print `policy.yaml` as it is, comments included.
+
+```
+familymonctl policy get [--json]
+```
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `--json` | flag | off | JSON keys `path`, `exists`, `text` (the file), and the [`policy validate`](#policy-validate) result (`ok`, `errors`, `summary`). |
+
+- Root: yes in practice (`policy.yaml` is root-only). READ-ONLY.
+- No policy: exit 1, `no policy at <path>`.
+
+```bash
+sudo familymonctl policy get > policy.yaml
+```
+
+### policy validate
+
+Check a policy document against every parser that reads `policy.yaml`, without writing anything.
+
+```
+familymonctl policy validate [--json] [SOURCE]
+```
+
+| Argument / option | Type | Default | Meaning |
+|---|---|---|---|
+| `SOURCE` | path, or `-` for stdin | the live `policy.yaml` | Document to check. An unreadable file: exit 1, `cannot read <source>: ...`. |
+| `--json` | flag | off | JSON keys `ok`, `errors`, `summary`. |
+
+- Root: yes in practice when checking the live policy; not for a file of your own. READ-ONLY.
+- Runs the enforcement parser (`user`, `lockout`, `allowed_hours`, `daily_limits`, `games`), the `games.charge_browser_games_when` check (`visible` or `focused`), the `personal_time`, `web_block` and `retention.screenshots_days` parsers. Each failing section gives one error, so a document with two mistakes reports both. A document that is not YAML, or not a mapping, gives one error.
+- Valid: prints `policy OK: user <user>, lockout <lockout>`, then per day `  mon: <hours>  limit=<limit>` (same labels as [`enforce show`](#enforce-show)), `  games: on|off; browser games charged: <bool> (<when>)`, `  web_block: on|off`, `  personal_time: <day from-until, ...>|none`, `  retention: N day(s) of screenshots`. Exit 0.
+- Invalid: one `  ! <error>` line per error on stderr, exit 1. With `--json` the result is printed on stdout and the exit is still 1.
+- Unknown top-level keys are not errors (they are ignored, as everywhere).
+
+```bash
+sudo familymonctl policy validate
+sudo familymonctl policy validate - < policy.yaml
+```
+
+### policy set
+
+Replace `policy.yaml` with a complete document after validating it.
+
+```
+familymonctl policy set SOURCE
+```
+
+| Argument | Type | Default | Meaning |
+|---|---|---|---|
+| `SOURCE` | path, or `-` for stdin | required | The whole new document, not a fragment. |
+
+- Root: yes in practice. Class: WRITES-STATE.
+- Validates exactly as [`policy validate`](#policy-validate). Invalid: exit 1, `policy rejected: <errors joined by "; ">`; nothing is written.
+- Copies the current file to `policy.yaml.prev` (one level of undo, root-only 0600), then writes the document verbatim (comments kept) through a temp file and a rename, mode 0600, owner root. Writes a `policy_changed` event (`changed` top-level keys, `previous` path) when the DB exists.
+- Applies nothing. Output: `wrote <path> (previous kept at <path>.prev)`, then one `  <key>: <what makes it take effect>` line per changed top-level key, or `  no top-level key changed`. The texts follow [config.md](config.md) section 2; a key familymon does not know is reported as `unknown key` (usually a typo).
+- Next steps for `user`, `lockout`, `allowed_hours`, `daily_limits`, `games`: `enforce plan`, then `enforce apply` (or wait for the hourly reconciler).
+- Parent decides: every value in the policy. Undo: `sudo familymonctl policy set /var/lib/familymon/policy.yaml.prev` (this makes the current file the new `.prev`), then plan and apply again if enforced keys changed.
+
+```bash
+sudo familymonctl policy validate - < policy.yaml
+sudo familymonctl policy set - < policy.yaml
+sudo familymonctl enforce plan
+```
+
+(Separate steps: read each output before running the next.)
+
+---
+
+## config
+
+Read and replace the parent-editable config files: `schedule_extras.yaml`, `messaging_apps.yaml`, `game_apps.yaml`, `domains_starter.yaml`, `title_brands.yaml`. Keys are in [config.md](config.md) sections 5 to 8. Any other name is an error, exit 1 (`unknown config file '<name>'; one of [...]`).
+
+### config list
+
+The config files these commands manage, and whether an override exists.
+
+```
+familymonctl config list
+```
+
+- No options. Root: no. READ-ONLY.
+- Output: one line per file, `  <name> override|bundled  <path in effect>`.
+
+### config get
+
+Print a config file as resolved now: the override if present, else the bundled default.
+
+```
+familymonctl config get NAME
+```
+
+- Root: no (the files are world-readable). READ-ONLY. No `--json` (the `config_get` MCP tool adds `path`, `overridden`, `override_path` and `takes_effect`).
+
+```bash
+familymonctl config get schedule_extras.yaml > schedule_extras.yaml
+```
+
+### config set
+
+Write a config override after validating it with the loader that will read it.
+
+```
+familymonctl config set NAME SOURCE
+```
+
+| Argument | Type | Default | Meaning |
+|---|---|---|---|
+| `NAME` | one of the five names | required | File to replace. |
+| `SOURCE` | path, or `-` for stdin | required | The whole new file. An override replaces the bundled file entirely, so start from `config get`. |
+
+- Root: yes in practice. Class: WRITES-STATE.
+- Validation, before anything is written: the text must be a YAML mapping; then `schedule_extras.yaml` goes through the schedule extras loader, `messaging_apps.yaml` through the capture redaction loader (an empty document is rejected), `game_apps.yaml` may only have `window_classes` and `binaries` as lists of strings, and `domains_starter.yaml` and `title_brands.yaml` may only have known category names as keys, each a list of strings. A rejection: exit 1 with the loader's message; nothing is written.
+- Writes to `$FAMILYMON_CONFIG_DIR/<name>` when that variable is set, else `/etc/familymon/<name>`, through a temp file and a rename, mode 0644 (world-readable on purpose: the capture probe runs as the monitored user and reads `messaging_apps.yaml`). The previous override is copied to `<name>.prev` first. Writes a `config_changed` event (`name`, `previous` path) when the DB exists.
+- Output: `wrote <path> (previous kept at <path>.prev)` and `  takes effect: <text>`. For `schedule_extras.yaml` the text says to run [`schedule refresh`](#schedule-refresh).
+- The three files the deb ships to `/etc/familymon` are dpkg conffiles; an override written here is a local edit that dpkg keeps on upgrade.
+- Safety: `messaging_apps.yaml` is the privacy contract. Removing entries exposes chats to screenshots; parent decides. Undo: `sudo familymonctl config set <name> /etc/familymon/<name>.prev`.
+
+```bash
+sudo familymonctl config set schedule_extras.yaml - < schedule_extras.yaml
+sudo familymonctl schedule refresh
+```
+
+---
+
+## mcp
+
+Serve the operator surface as MCP tools on stdin and stdout, for the parent's AI agent. Full reference: [mcp.md](mcp.md).
+
+```
+familymonctl mcp
+```
+
+- No options. Root: required in production (launched as `ssh kid-laptop sudo -n familymonctl mcp`; the sudoers rule `/etc/sudoers.d/familymon-mcp` lets the `familymon-admin` group run exactly this command). The code does not check the uid; a non-root run works on the dev state dir. Class: TOUCHES-PROCESSES (long-running server); its tools are read-only, write or enforcing, each calling the same `familymon/ops.py` function as the matching command here.
+- Stdio only; nothing listens on the network. Runs until the client closes stdin, then exits 0.
+- Needs the `mcp` Python extra (bundled in the deb). Without it: exit 1, `the MCP server needs the 'mcp' extra (uv sync --extra mcp): ...`. In a dev checkout use `uv run --extra mcp familymonctl mcp`.
+- `--help` is answered without starting the server.
+
+---
+
 ## extension
 
 ### extension build
@@ -689,6 +890,7 @@ familymonctl extension build --key private/chrome-extension-key.pem --out /tmp/f
 
 - Units that run these commands on a schedule: [files-and-units.md](files-and-units.md)
 - Policy and config keys: [config.md](config.md)
+- MCP tools: [mcp.md](mcp.md)
 - Health checks: [../operate/verify-and-health.md](../operate/verify-and-health.md)
 - Failure modes: [../operate/troubleshoot.md](../operate/troubleshoot.md)
 - Testing and shipping: [../develop/testing-and-shipping.md](../develop/testing-and-shipping.md)

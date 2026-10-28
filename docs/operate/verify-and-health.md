@@ -122,6 +122,7 @@ sudo familymonctl enforce show kid             # read back live state over D-Bus
 sudo familymonctl enforce plan                 # must print "live state matches policy"
 ```
 
+- The same facts as data: `sudo familymonctl enforce plan --json` and `sudo familymonctl health --json` (MCP tools `enforce_plan` and `health`). Prefer them when the agent must compare values rather than read text.
 - `plan` exits 0 even when applying would be unsafe. It prints "!! applying NOW would be unsafe". `apply` then exits 3 unless `--force`.
 - Safety: the guard refuses when the new window for today excludes the current time or today's limit would shrink, and a session is active. Do not use `--force` to get around it without the parent's decision: it can cut off the kid mid-session. Prefer waiting for logout.
 - timekpr timing (timekpr-next behaviour, observed with 0.5.10, not part of familymon's code): timekpr applies a play-time-left change on its next poll, about 3 s. Read back after a few seconds, not immediately.
@@ -211,6 +212,8 @@ Check `dpkg -s familymon`, then the units' `ActiveEnterTimestamp` against the in
 
 ## 7. Checklist for every change
 
+When the MCP server is connected, its tools count as the same steps: `health`, `enforce_plan`, `enforce_apply`, `enforce_show`, `events` and the rest run the same operations as the commands named here. See [../reference/mcp.md](../reference/mcp.md).
+
 Before:
 1. `sudo familymonctl health`: exit 0, no unexplained warnings. Record the numbers. Do not apply updates onto an unhealthy capture pipeline.
 2. Status of capture and timers (section 4). Capture must be running continuously.
@@ -231,6 +234,8 @@ After:
 | Change | Undo |
 |---|---|
 | `enforce apply` | Edit `policy.yaml`, `enforce plan`, `enforce apply` |
+| `policy set` / `policy_set` | `policy.yaml.prev` holds the previous file (one level): `sudo familymonctl policy set /var/lib/familymon/policy.yaml.prev`, then `enforce plan` and `enforce apply` |
+| `config set` / `config_set` | `<name>.prev` next to the override holds the previous one: `config set <name> <path to .prev>` |
 | `enforce grant` (hours) | `enforce revoke kid`. Grants also expire on their own |
 | `enforce grant --playtime` | No revoke command: `revoke` drops hour grants only. The grant is a one-off adjustment of timekpr's play-time-left counter; how it is reset is timekpr behaviour (UNVERIFIED) |
 | Web block | Set `web_block.enabled: false`. The next tick deletes `/etc/opt/chrome/policies/managed/familymon.json` |

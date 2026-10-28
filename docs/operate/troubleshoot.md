@@ -31,6 +31,7 @@ Read this when something looks wrong on a running familymon install: stale behav
 | Chrome is running but the extension is not | [Chrome without the extension](#chrome-without-the-extension) |
 | The kid used another browser in a lesson | [Another browser used in a lesson](#another-browser-used-in-a-lesson) |
 | Dashboard does not load | [Dashboard unreachable](#dashboard-unreachable) |
+| The agent's MCP server will not start, or the `mcp__familymon__*` tools are missing | [MCP server does not start / tools missing](#mcp-server-does-not-start--tools-missing) |
 
 ## Stale code after upgrade
 
@@ -516,6 +517,25 @@ Check:
 ```bash
 sudo systemctl restart familymon-dashboard.service
 ```
+
+## MCP server does not start / tools missing
+
+**Symptom.** The agent reports the familymon MCP server as failed or disconnected, or the `mcp__familymon__*` tools do not appear.
+
+**Diagnose (read-only).** From the parent's machine, start the server with stdin closed: it exits 0 at once when SSH, sudo and the command all resolve. (`sudo -n familymonctl mcp --help` is denied: the sudoers rule names the arguments, so sudo allows exactly `familymonctl mcp`.)
+
+```bash
+ssh kid-laptop sudo -n familymonctl mcp </dev/null; echo "exit=$?"
+```
+
+Check:
+
+1. **`sudo: a password is required`.** The parent's account is not in the `familymon-admin` group yet, or the SSH session predates `usermod` (group membership applies at the next login). On the laptop: `id parent`; add with `sudo usermod -aG familymon-admin parent`, then open a new SSH session. The group and `/etc/sudoers.d/familymon-mcp` ship with the deb (see [install.md](install.md), section 9).
+2. **"the MCP server needs the 'mcp' extra".** This is a dev checkout installed without the optional extra. The deb bundles it. In a checkout use `uv run --extra mcp familymonctl mcp` (see [../develop/testing-and-shipping.md](../develop/testing-and-shipping.md)).
+3. **Reading the server's log.** The server logs to stderr, never stdout, because stdout carries the protocol. The client usually shows or captures stderr; do not add prints to stdout when debugging.
+4. **Tools missing after registering.** Restart the agent session; tools load at session start. Registration command: `claude mcp add --scope user familymon -- ssh kid-laptop sudo -n familymonctl mcp`.
+
+**Fix.** Correct the group membership or install the package, then start a new session. Safety: never put the monitored account in `familymon-admin`.
 
 ## Unsure claims
 

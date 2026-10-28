@@ -1,0 +1,9 @@
+# familymon: let members of the familymon-admin group start the MCP server
+# without a password, so the parent's AI agent can launch it over SSH as
+#   ssh kid-laptop sudo -n familymonctl mcp
+# The server runs as root and exposes familymon's operator surface (the same
+# operations as `sudo familymonctl ...`) on stdin/stdout; nothing else is
+# granted and nothing listens on the network. The group is created empty by
+# the package. Add the parent's account:   usermod -aG familymon-admin NAME
+# The monitored child's account must never be a member.
+%familymon-admin ALL=(root) NOPASSWD: /usr/bin/familymonctl mcp

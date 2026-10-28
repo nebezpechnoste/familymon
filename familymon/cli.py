@@ -20,14 +20,52 @@ def main(verbose: bool) -> None:
     logging.getLogger("PIL").setLevel(logging.INFO)
 
 
-@main.command()
-def status() -> None:
-    """Print runtime status."""
-    from familymon.config import db_path, screenshots_dir, state_dir
+def _ops(fn, *args, **kwargs):
+    """Call an ops function; a parent-facing OpsError becomes a click error."""
+    from familymon.ops import OpsError
 
-    click.echo(f"state_dir:       {state_dir()}")
-    click.echo(f"db_path:         {db_path()} (exists={db_path().exists()})")
-    click.echo(f"screenshots_dir: {screenshots_dir()} (exists={screenshots_dir().exists()})")
+    try:
+        return fn(*args, **kwargs)
+    except OpsError as e:
+        raise click.ClickException(str(e)) from None
+
+
+def _read_source(source: str) -> str:
+    """A file path, or '-' for stdin."""
+    import sys
+    from pathlib import Path
+
+    if source == "-":
+        return sys.stdin.read()
+    try:
+        return Path(source).read_text()
+    except OSError as e:
+        raise click.ClickException(f"cannot read {source}: {e}") from None
+
+
+_JSON_FLAG = click.option("--json", "as_json", is_flag=True, help="Machine-readable JSON output.")
+
+
+@main.command()
+@_JSON_FLAG
+def status(as_json: bool) -> None:
+    """Print runtime status: versions, state dir, what exists there."""
+    from familymon.ops import status_summary, to_json
+
+    r = status_summary()
+    if as_json:
+        click.echo(to_json(r))
+        return
+    pkg = f" (deb {r['package_version']})" if r["package_version"] else ""
+    click.echo(f"version:         {r['version']}{pkg}")
+    click.echo(f"state_dir:       {r['state_dir']}")
+    click.echo(f"db_path:         {r['db']['path']} (exists={r['db']['exists']})")
+    click.echo(
+        f"screenshots_dir: {r['screenshots_dir']['path']} (exists={r['screenshots_dir']['exists']})"
+    )
+    click.echo(f"policy:          {r['policy']['path']} (exists={r['policy']['exists']})")
+    click.echo(f"schedule:        {r['schedule']['path']} (exists={r['schedule']['exists']})")
+    click.echo(f"monitored user:  {r['monitored_user'] or '(none: no policy user)'}")
 
 
 @main.command("capture-once")
@@ -163,17 +201,19 @@ async def _monitored_session_label() -> str:
 
 
 @main.command("health")
-def health_cmd() -> None:
+@_JSON_FLAG
+def health_cmd(as_json: bool) -> None:
     """Print a data-health report. Exits non-zero on a privacy violation.
 
     Run this at the start of each dev iteration, before shipping changes.
     """
-    from familymon.config import db_path, screenshots_dir
-    from familymon.health import compute_health
-    from familymon.storage.session import make_engine, make_session_factory
+    from familymon.ops import health_summary, to_json
 
-    sessions = make_session_factory(make_engine(db_path()))
-    r = compute_health(sessions, screenshots_dir())
+    h = health_summary()
+    if as_json:
+        click.echo(to_json(h))
+        raise SystemExit(h["exit_code"])
+    r = h["report"]
 
     def age(seconds: float | None) -> str:
         if seconds is None:
@@ -184,63 +224,44 @@ def health_cmd() -> None:
             return f"{int(seconds / 60)}m"
         return f"{seconds / 3600:.1f}h"
 
-    click.echo(f"as of:            {r.now:%Y-%m-%d %H:%M:%S} (local)")
-    click.echo(f"total captures:   {r.total_captures}")
-    click.echo(f"last 1h / 24h:    {r.captures_last_1h} / {r.captures_last_24h}")
-    click.echo(f"last capture age: {age(r.last_capture_age_seconds)}")
-    click.echo(f"largest gap 24h:  {age(r.largest_gap_seconds_24h)}")
-    click.echo(f"classified 24h:   {r.classified_pct_24h:.0f}%")
-    if r.dedup_eligible_24h == 0:
+    click.echo(f"as of:            {r['now'][:19].replace('T', ' ')} (local)")
+    click.echo(f"total captures:   {r['total_captures']}")
+    click.echo(f"last 1h / 24h:    {r['captures_last_1h']} / {r['captures_last_24h']}")
+    click.echo(f"last capture age: {age(r['last_capture_age_seconds'])}")
+    click.echo(f"largest gap 24h:  {age(r['largest_gap_seconds_24h'])}")
+    click.echo(f"classified 24h:   {r['classified_pct_24h']:.0f}%")
+    if r["dedup_eligible_24h"] == 0:
         click.echo("dedup 24h:        n/a (no captures eligible — session idle/locked)")
     else:
         click.echo(
-            f"dedup 24h:        {r.dedup_pct_24h:.0f}% same-as-prev "
-            f"({r.dedup_eligible_24h} eligible)"
+            f"dedup 24h:        {r['dedup_pct_24h']:.0f}% same-as-prev "
+            f"({r['dedup_eligible_24h']} eligible)"
         )
-    click.echo(f"msg full-skips24h:{r.messaging_skips_24h}")
+    click.echo(f"msg full-skips24h:{r['messaging_skips_24h']}")
     click.echo(
-        f"screenshots:      {r.screenshots_on_disk} files, {r.screenshot_disk_bytes / 1e6:.1f} MB"
+        f"screenshots:      {r['screenshots_on_disk']} files, "
+        f"{r['screenshot_disk_bytes'] / 1e6:.1f} MB"
     )
-    if r.category_counts_24h:
+    if r["category_counts_24h"]:
         dist = ", ".join(
-            f"{cat}={n}" for cat, n in sorted(r.category_counts_24h.items(), key=lambda kv: -kv[1])
+            f"{cat}={n}"
+            for cat, n in sorted(r["category_counts_24h"].items(), key=lambda kv: -kv[1])
         )
         click.echo(f"categories 24h:   {dist}")
+    hb = h["heartbeat"]
+    click.echo(f"heartbeat:        {hb['status']} (session {hb['session'] or 'unknown'})")
 
     # Soft warnings.
-    if r.last_capture_age_seconds is not None and r.last_capture_age_seconds > 180:
-        click.echo("  ! capture is stale (>3 min since last) — is capture-run alive?")
-    if r.largest_gap_seconds_24h is not None and r.largest_gap_seconds_24h > 300:
-        click.echo(
-            "  ! a >5 min gap exists in the last 24h (crash, or laptop sleep — check the journal)"
-        )
-    if r.captures_last_24h and r.messaging_skips_24h / r.captures_last_24h > 0.10:
-        click.echo(
-            "  ! messaging full-skips are >10% of captures — either chats are "
-            "often foregrounded, or a messaging window has unmappable geometry "
-            "(screenshot gaps; capture rows/classification are unaffected)"
-        )
+    for w in h["warnings"]:
+        click.echo(f"  ! {w}")
 
-    # Hard failure: privacy contract breach.
-    if r.privacy_violations:
-        click.echo(
-            f"  !! PRIVACY VIOLATION: {r.privacy_violations} capture(s) with a "
-            "messaging window present have an UN-redacted screenshot on disk",
-            err=True,
-        )
-        raise SystemExit(2)
+    # Hard failures: the privacy contract (exit 2) or a damaged DB (exit 4).
+    for f in h["failures"]:
+        click.echo(f"  !! {f}", err=True)
+    if h["exit_code"]:
+        raise SystemExit(h["exit_code"])
     click.echo("privacy check:    OK (no unredacted messaging screenshots on disk)")
-
-    # Hard failure: the database itself is damaged (power loss, flaky PSU).
-    # Capture may keep inserting while classify fails on every run.
-    if r.db_integrity != "ok":
-        # Recovery runs automatically at open (storage/recovery.py); reaching
-        # here means even that couldn't produce a healthy file.
-        click.echo(f"  !! DB INTEGRITY: {r.db_integrity} (automatic recovery failed)", err=True)
-        raise SystemExit(4)
     click.echo("db integrity:     ok")
-    if r.last_db_recovery:
-        click.echo(f"  ! DB was auto-recovered: {r.last_db_recovery}")
 
 
 @main.command("migrate-state")
@@ -342,57 +363,37 @@ def _personal_time_window(now):
 @click.option(
     "--day", default=None, help="Day YYYY-MM-DD to count hidden captures for (default: today)."
 )
-def personal_time_cmd(day: str | None) -> None:
+@_JSON_FLAG
+def personal_time_cmd(day: str | None, as_json: bool) -> None:
     """Show today's personal-time window (policy.yaml `personal_time`) and
     what it covered: captures taken without a screenshot whose app and title
     the dashboard hides, and the game minutes among them. Read-only."""
-    from datetime import date, datetime, time, timedelta
+    from familymon.ops import personal_time_summary, to_json
 
-    from sqlalchemy import func, select
-
-    from familymon.config import capture_interval_seconds, db_path
-    from familymon.storage.models import Capture, Classification
-    from familymon.storage.session import make_readonly_engine, make_session_factory
-
-    now = datetime.now()
-    try:
-        window = _personal_time_window(now)
-    except Exception as e:
-        raise click.ClickException(f"personal_time in policy.yaml is unusable: {e}") from None
-    if window is None:
+    r = _ops(personal_time_summary, day)
+    if as_json:
+        click.echo(to_json(r))
+        return
+    now = r["now"][11:16]
+    if r["window"] is None:
         click.echo("personal time today: none")
     else:
-        click.echo(f"personal time today: {window.label()}")
-        if window.active(now):
+        click.echo(f"personal time today: {r['window']['label']}")
+        if r["active_now"]:
             click.echo(
-                f"now {now:%H:%M}: in personal time (no screenshots; the dashboard hides "
+                f"now {now}: in personal time (no screenshots; the dashboard hides "
                 "app names and titles; categories and game time still count)"
             )
         else:
-            click.echo(f"now {now:%H:%M}: outside personal time (full capture)")
+            click.echo(f"now {now}: outside personal time (full capture)")
+    from familymon.config import db_path
 
     if not db_path().exists():
         return
-    target = date.fromisoformat(day) if day else now.date()
-    start = datetime.combine(target, time.min)
-    in_window = (
-        Capture.personal_time.is_(True),
-        Capture.captured_at >= start,
-        Capture.captured_at < start + timedelta(days=1),
+    click.echo(
+        f"hidden captures on {r['day']}: {r['hidden_captures']} "
+        f"(games: {r['hidden_game_captures']}, about {r['hidden_game_minutes']} min)"
     )
-    with make_session_factory(make_readonly_engine(db_path()))() as s:
-        total = s.scalar(select(func.count()).where(*in_window)) or 0
-        games = (
-            s.scalar(
-                select(func.count())
-                .select_from(Capture)
-                .join(Classification, Classification.capture_id == Capture.id)
-                .where(*in_window, Classification.category == "games")
-            )
-            or 0
-        )
-    minutes = games * capture_interval_seconds() / 60
-    click.echo(f"hidden captures on {target}: {total} (games: {games}, about {minutes:.0f} min)")
 
 
 @main.command("events")
@@ -403,29 +404,21 @@ def personal_time_cmd(day: str | None) -> None:
     multiple=True,
     help="Only these kinds (repeatable), e.g. capture_failed, capture_tamper.",
 )
-def events_cmd(day: str | None, kinds: tuple[str, ...]) -> None:
+@_JSON_FLAG
+def events_cmd(day: str | None, kinds: tuple[str, ...], as_json: bool) -> None:
     """List the day's operational events (heartbeats excluded unless asked):
     capture failures, tamper evidence, enforcement and grant audit rows."""
     import json
-    from datetime import date, datetime, time, timedelta
 
-    from sqlalchemy import select
+    from familymon.ops import events_on, to_json
 
-    from familymon.config import db_path
-    from familymon.storage.models import Event
-    from familymon.storage.session import make_readonly_engine, make_session_factory
-
-    if not db_path().exists():
-        raise click.ClickException(f"no database at {db_path()}")
-    target = date.fromisoformat(day) if day else date.today()
-    start = datetime.combine(target, time.min)
-    q = select(Event).where(Event.at >= start, Event.at < start + timedelta(days=1))
-    q = q.where(Event.kind.in_(kinds)) if kinds else q.where(Event.kind != "heartbeat")
-    with make_session_factory(make_readonly_engine(db_path()))() as s:
-        rows = s.scalars(q.order_by(Event.at)).all()
-    for ev in rows:
-        click.echo(f"{ev.at:%H:%M:%S}  {ev.kind:20} {json.dumps(ev.data, sort_keys=True)}")
-    click.echo(f"{len(rows)} event(s) on {target}")
+    r = _ops(events_on, day, tuple(kinds))
+    if as_json:
+        click.echo(to_json(r))
+        return
+    for ev in r["events"]:
+        click.echo(f"{ev['at'][11:19]}  {ev['kind']:20} {json.dumps(ev['data'], sort_keys=True)}")
+    click.echo(f"{r['count']} event(s) on {r['day']}")
 
 
 @main.group("schedule")
@@ -451,34 +444,34 @@ def schedule_import(source: str, fmt: str) -> None:
     import json
     from pathlib import Path
 
-    from familymon.config import config_file, schedule_path
-    from familymon.policy.importers import parse_kingsinterhigh_week
-    from familymon.policy.schedule import apply_extras, load_extras
+    from familymon.ops import schedule_import_data
 
-    # Parent-maintained extras: /etc/familymon/schedule_extras.yaml (or the
-    # empty bundled default) — exclusions + custom notify-able blocks.
-    excludes, extras, breaks = load_extras(config_file("schedule_extras.yaml"))
-    data = json.loads(Path(source).read_text())
-    schedule = parse_kingsinterhigh_week(data, exclude_subjects=excludes)  # only format for now
-    schedule = apply_extras(schedule, excludes, extras, breaks)
-    schedule.save(schedule_path())
-    n_school = sum(1 for b in schedule.blocks if b.category == "school")
+    try:
+        data = json.loads(Path(source).read_text())
+    except ValueError as e:
+        raise click.ClickException(f"{source} is not JSON: {e}") from None
+    r = _ops(schedule_import_data, data, fmt)
+    _echo_schedule_result("imported", r)
+
+
+def _echo_schedule_result(verb: str, r: dict) -> None:
+    imp = r["imported"]
+    tz = f"timezone: {r['timezone']}; " if verb == "imported" else ""
     click.echo(
-        f"imported {len(schedule.blocks)} block(s) -> {schedule_path()}"
-        f" (timezone: {schedule.timezone}; {n_school} school, {len(extras)} extra, "
-        f"excluded subjects: {', '.join(excludes) or 'none'}; {len(breaks)} break(s))"
+        f"{verb} {r['count']} block(s) -> {r['path']}"
+        f" ({tz}{r['by_category'].get('school', 0)} school, {imp['extras']} extra, "
+        f"excluded subjects: {', '.join(imp['excluded_subjects']) or 'none'}; "
+        f"{imp['breaks']} break(s))"
     )
-    _echo_breaks(schedule)
+    _echo_breaks(r["breaks"])
 
 
-def _echo_breaks(schedule, today=None) -> None:
+def _echo_breaks(breaks: list[dict]) -> None:
     """One line per break, marking the one in progress today."""
-    from datetime import date
-
-    today = today or date.today()
-    for br in schedule.breaks:
-        now = " [in progress — no lessons today]" if br.covers(today) else ""
-        click.echo(f"  break: {br.label} ({', '.join(br.categories)} blocks suspended){now}")
+    for br in breaks:
+        now = " [in progress — no lessons today]" if br["in_progress"] else ""
+        cats = ", ".join(br.get("categories") or ["school"])
+        click.echo(f"  break: {br['label']} ({cats} blocks suspended){now}")
 
 
 @schedule_grp.command("refresh")
@@ -490,56 +483,37 @@ def schedule_refresh() -> None:
     lessons are kept exactly as they are; exclusions, custom blocks and
     breaks are rebuilt from the extras file.
     """
-    from familymon.config import config_file, schedule_path
-    from familymon.policy.schedule import Schedule, apply_extras, load_extras
+    from familymon.ops import schedule_refresh as refresh
 
-    path = schedule_path()
-    if not path.exists():
-        raise click.ClickException(
-            f"no schedule at {path} — run 'familymonctl schedule import' first"
-        )
-    current = Schedule.load(path)
-    # Everything the importer produces is `school`; every other category came
-    # from the extras file, so rebuild those from scratch.
-    lessons = Schedule(
-        blocks=[b for b in current.blocks if b.category == "school"], timezone=current.timezone
-    )
-    excludes, extras, breaks = load_extras(config_file("schedule_extras.yaml"))
-    schedule = apply_extras(lessons, excludes, extras, breaks)
-    schedule.save(path)
-    n_school = sum(1 for b in schedule.blocks if b.category == "school")
-    click.echo(
-        f"refreshed {len(schedule.blocks)} block(s) -> {path}"
-        f" ({n_school} school, {len(extras)} extra, "
-        f"excluded subjects: {', '.join(excludes) or 'none'}; {len(breaks)} break(s))"
-    )
-    _echo_breaks(schedule)
+    _echo_schedule_result("refreshed", _ops(refresh))
 
 
 @schedule_grp.command("show")
-def schedule_show() -> None:
+@_JSON_FLAG
+def schedule_show(as_json: bool) -> None:
     """Print the current weekly schedule."""
-    from familymon.config import schedule_path
-    from familymon.policy.schedule import Schedule
+    from familymon.ops import schedule_summary, to_json
 
-    path = schedule_path()
-    if not path.exists():
-        click.echo(f"no schedule at {path} — run 'familymonctl schedule import' first")
+    r = schedule_summary()
+    if as_json:
+        click.echo(to_json(r))
         return
-    schedule = Schedule.load(path)
+    if not r["exists"]:
+        click.echo(f"no schedule at {r['path']} — run 'familymonctl schedule import' first")
+        return
     current_day = None
-    for b in schedule.blocks:
-        if b.day != current_day:
-            current_day = b.day
-            click.echo(f"\n{b.day}")
+    for b in r["blocks"]:
+        if b["day"] != current_day:
+            current_day = b["day"]
+            click.echo(f"\n{b['day']}")
         click.echo(
-            f"  {b.start:%H:%M}-{b.end:%H:%M}  {b.category:8} {b.subject}"
-            f"{'  [notify]' if b.notify else ''}"
+            f"  {b['start']}-{b['end']}  {b['category']:8} {b['subject']}"
+            f"{'  [notify]' if b.get('notify') else ''}"
         )
-    click.echo(f"\n{len(schedule.blocks)} block(s) total")
-    if schedule.breaks:
+    click.echo(f"\n{r['count']} block(s) total")
+    if r["breaks"]:
         click.echo("")
-        _echo_breaks(schedule)
+        _echo_breaks(r["breaks"])
 
 
 @schedule_grp.command("notify-tick")
@@ -786,94 +760,63 @@ def enforce_grp() -> None:
 
 
 def _enforce_desired():
-    """Shared: load policy.yaml + Steam scan -> desired settings."""
-    from familymon.capture.games import GameLibrary
-    from familymon.config import policy_path
-    from familymon.policy.enforcement import build_settings, load_policy
+    """Shared: load policy.yaml + Steam scan + today's grants -> desired settings."""
+    from familymon.ops import desired_settings
 
-    path = policy_path()
-    if not path.exists():
-        raise click.ClickException(
-            f"no policy at {path} — copy familymon/defaults/policy_example.yaml "
-            "(installed: /usr/share/familymon/policy_example.yaml) there first"
-        )
-    policy = load_policy(path)
-    # Scan the *monitored* user's Steam library, not the invoker's — this runs
-    # as root, whose home has no Steam, which would yield zero game masks.
-    user = policy.get("user")
-    gamelib = _game_library(user) if isinstance(user, str) else GameLibrary.from_system()
-    settings = build_settings(policy, gamelib.game_dirs)
-    # One-off grants (familymonctl enforce grant) widen today's window; folding
-    # them in here is what stops the hourly reconciler from reverting them.
-    from datetime import datetime
-
-    from familymon.config import state_dir
-    from familymon.policy.enforcement import apply_grants
-    from familymon.policy.grants import GrantStore, active_windows
-
-    now = datetime.now()
-    windows = active_windows(GrantStore(state_dir() / "grants.json"), settings.user, now)
-    return apply_grants(settings, windows, now.date())
+    return _ops(desired_settings)
 
 
 def _echo_changes(changes) -> None:
     for c in changes:
-        click.echo(f"  {c.setting}:")
-        click.echo(f"    live:    {c.current}")
-        click.echo(f"    desired: {c.desired}")
+        click.echo(f"  {c['setting']}:")
+        click.echo(f"    live:    {c['live']}")
+        click.echo(f"    desired: {c['desired']}")
 
 
 @enforce_grp.command("show")
-@click.argument("user")
-def enforce_show(user: str) -> None:
-    """Print the live timekpr state for USER (read over D-Bus)."""
-    from familymon.policy.timekpr_admin import LiveTimekpr
+@click.argument("user", required=False)
+@_JSON_FLAG
+def enforce_show(user: str | None, as_json: bool) -> None:
+    """Print the live timekpr state for USER (default: the policy's user), read over D-Bus."""
+    from familymon.ops import live_summary, to_json
 
-    live = LiveTimekpr().get_live_state(user)
-    click.echo(f"user:              {user}")
-    click.echo(f"active sessions:   {live.active_session_count}")
-    click.echo(f"lockout:           {live.lockout}")
-    click.echo(f"allowed weekdays:  {';'.join(map(str, live.allowed_weekdays))}")
-    days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-    for i, day in enumerate(days):
-        hours = live.allowed_hours[i]
-        contiguous_whole = (
-            bool(hours)
-            and all(w.whole for w in hours)
-            and ([w.hour for w in hours] == list(range(hours[0].hour, hours[-1].hour + 1)))
-        )
-        span = (
-            f"{hours[0].hour:02d}:00-{hours[-1].hour:02d}:59"
-            if contiguous_whole
-            else ";".join(w.cli() for w in hours) or "(none)"
-        )
-        click.echo(f"  {day}: {span}  limit={live.daily_limits[i]}s")
-    click.echo(f"playtime enabled:  {live.playtime_enabled}")
-    if live.playtime_enabled:
-        click.echo("playtime limits:   " + ";".join(map(str, live.playtime_daily_limits)))
-        for a in live.playtime_activities:
-            click.echo(f"  activity: {a.mask}  [{a.description}]")
+    r = _ops(live_summary, user)
+    if as_json:
+        click.echo(to_json(r))
+        return
+    click.echo(f"user:              {r['user']}")
+    click.echo(f"active sessions:   {r['active_sessions']}")
+    click.echo(f"lockout:           {r['lockout']}")
+    click.echo(f"allowed weekdays:  {';'.join(map(str, r['allowed_weekdays']))}")
+    for day, span in r["allowed_hours"].items():
+        click.echo(f"  {day[:3]}: {span}  limit={r['daily_limits'][day]}")
+    pt = r["playtime"]
+    click.echo(f"playtime enabled:  {pt['enabled']}")
+    if pt["enabled"]:
+        click.echo("playtime limits:   " + ";".join(pt["daily_limits"].values()))
+        for a in pt["activities"]:
+            click.echo(f"  activity: {a['mask']}  [{a['description']}]")
 
 
 @enforce_grp.command("plan")
-def enforce_plan() -> None:
+@_JSON_FLAG
+def enforce_plan(as_json: bool) -> None:
     """Dry run: show what `apply` would change (no writes)."""
-    from familymon.policy.enforcement import plan_changes, plan_is_safe_now
-    from familymon.policy.timekpr_admin import LiveTimekpr
+    from familymon.ops import plan_summary, to_json
 
-    desired = _enforce_desired()
-    live = LiveTimekpr().get_live_state(desired.user)
-    changes = plan_changes(desired, live)
-    if not changes:
-        click.echo(f"{desired.user}: live state matches policy — nothing to do")
+    r = _ops(plan_summary)
+    if as_json:
+        click.echo(to_json(r))
         return
-    click.echo(f"{desired.user}: {len(changes)} change(s) needed")
-    _echo_changes(changes)
-    verdict = plan_is_safe_now(desired, live)
-    if not verdict.safe:
+    if r["up_to_date"]:
+        click.echo(f"{r['user']}: live state matches policy — nothing to do")
+        return
+    click.echo(f"{r['user']}: {r['count']} change(s) needed")
+    _echo_changes(r["changes"])
+    if not r["safe_now"]:
         click.echo("\n!! applying NOW would be unsafe:")
-        for r in verdict.reasons:
-            click.echo(f"   - {r}")
+        for reason in r["reasons"]:
+            click.echo(f"   - {reason}")
         click.echo("   (apply refuses without --force; or wait for logout)")
 
 
@@ -885,28 +828,21 @@ def enforce_plan() -> None:
 )
 def enforce_apply(force: bool) -> None:
     """Apply the policy to the live timekpr daemon (minimal diff)."""
-    from familymon.policy.enforcement import plan_changes, plan_is_safe_now
-    from familymon.policy.timekpr_admin import LiveTimekpr
+    from familymon.ops import UnsafeNow, apply_policy
 
-    desired = _enforce_desired()
-    transport = LiveTimekpr()
-    live = transport.get_live_state(desired.user)
-    changes = plan_changes(desired, live)
-    if not changes:
-        click.echo(f"{desired.user}: live state matches policy — nothing to do")
-        return
-
-    verdict = plan_is_safe_now(desired, live)
-    if not verdict.safe and not force:
+    try:
+        r = _ops(apply_policy, force=force)
+    except UnsafeNow as e:
         click.echo("refusing to apply — it would cut off an active session:", err=True)
-        for r in verdict.reasons:
-            click.echo(f"  - {r}", err=True)
+        for reason in e.reasons:
+            click.echo(f"  - {reason}", err=True)
         click.echo("re-run with --force to override, or wait for logout.", err=True)
-        raise SystemExit(3)
-
-    _echo_changes(changes)
-    transport.apply(changes)
-    click.echo(f"applied {len(changes)} change(s) to {desired.user}")
+        raise SystemExit(3) from None
+    if r["up_to_date"]:
+        click.echo(f"{r['user']}: live state matches policy — nothing to do")
+        return
+    _echo_changes(r["applied"])
+    click.echo(f"applied {r['count']} change(s) to {r['user']}")
 
 
 @enforce_grp.command("chargeback")
@@ -1037,98 +973,50 @@ def enforce_grant(
     --until widens today's allowed-hours window (expires on its own, never
     reverted by familymon-enforce.timer); --playtime adds game minutes.
     """
-    from datetime import datetime
+    from familymon.ops import grant
 
-    from familymon.config import db_path, state_dir
-    from familymon.policy.enforcement import parse_duration, plan_changes
-    from familymon.policy.grants import GrantStore, _hhmm, until_today
-    from familymon.policy.timekpr_admin import LiveTimekpr
-    from familymon.storage.models import Event
-    from familymon.storage.session import make_engine, make_session_factory
-
-    if not until_ and not playtime:
-        raise click.ClickException("give --until HH:MM and/or --playtime <duration>")
-    now = datetime.now()
-    transport = LiveTimekpr()
-    root_sessions = make_session_factory(make_engine(db_path()))
-
-    if until_:
-        try:
-            start, end = until_today(_hhmm(until_), now=now, start=_hhmm(from_) if from_ else None)
-        except ValueError as e:
-            raise click.ClickException(str(e)) from None
-        grant = GrantStore(state_dir() / "grants.json").add(user, start, end, now=now, note=note)
-        desired = _enforce_desired()  # includes the grant we just stored
-        if desired.user != user:
-            raise click.ClickException(f"policy user is {desired.user!r}, not {user!r}")
-        live = transport.get_live_state(user)
-        changes = plan_changes(desired, live)
-        # Grants only widen the window, so this is safe at any hour by
-        # construction — no guard needed, no --force.
-        transport.apply(changes)
-        _audit(
-            root_sessions,
-            Event,
-            "grant_hours",
-            {"user": user, "day": grant.day, "start": grant.start, "end": grant.end, "note": note},
-        )
+    r = _ops(grant, user, until=until_, from_=from_, playtime=playtime, note=note)
+    if "hours" in r:
+        h = r["hours"]
         click.echo(
-            f"{user}: allowed until {grant.end} today ({grant.start}-{grant.end}); "
-            f"{len(changes)} timekpr change(s) applied"
+            f"{user}: allowed until {h['end']} today ({h['start']}-{h['end']}); "
+            f"{len(h['timekpr_changes'])} timekpr change(s) applied"
         )
-
-    if playtime:
-        secs = parse_duration(playtime)
-        transport.adjust_playtime_left(user, secs)
-        _audit(
-            root_sessions, Event, "grant_playtime", {"user": user, "seconds": secs, "note": note}
-        )
-        click.echo(f"{user}: +{secs}s game time today")
+    if "playtime_seconds" in r:
+        click.echo(f"{user}: +{r['playtime_seconds']}s game time today")
 
 
 @enforce_grp.command("grants")
-def enforce_grants() -> None:
+@_JSON_FLAG
+def enforce_grants(as_json: bool) -> None:
     """List today's active one-off grants."""
-    from datetime import datetime
+    from familymon.ops import grants_active, to_json
 
-    from familymon.config import state_dir
-    from familymon.policy.grants import GrantStore
-
-    store = GrantStore(state_dir() / "grants.json")
-    now = datetime.now()
-    rows = [g for g in store._load() if g.is_active(now)]
-    if not rows:
+    r = grants_active()
+    if as_json:
+        click.echo(to_json(r))
+        return
+    if not r["grants"]:
         click.echo("no active grants")
         return
-    for g in rows:
-        click.echo(f"  {g.user}: {g.day} {g.start}-{g.end}  {g.note}".rstrip())
+    for g in r["grants"]:
+        click.echo(f"  {g['user']}: {g['day']} {g['start']}-{g['end']}  {g['note']}".rstrip())
 
 
 @enforce_grp.command("revoke")
 @click.argument("user")
 def enforce_revoke(user: str) -> None:
     """Drop today's hour grants for USER and converge back to policy (guarded)."""
-    from datetime import datetime
+    from familymon.ops import revoke_grants
 
-    from familymon.config import state_dir
-    from familymon.policy.enforcement import plan_changes, plan_is_safe_now
-    from familymon.policy.grants import GrantStore
-    from familymon.policy.timekpr_admin import LiveTimekpr
-
-    n = GrantStore(state_dir() / "grants.json").revoke(user, datetime.now())
-    desired = _enforce_desired()
-    transport = LiveTimekpr()
-    live = transport.get_live_state(user)
-    changes = plan_changes(desired, live)
-    verdict = plan_is_safe_now(desired, live)
-    if changes and not verdict.safe:
+    r = _ops(revoke_grants, user)
+    if r["deferred"]:
         click.echo(
-            f"revoked {n} grant(s); timekpr NOT narrowed now (would cut the active session) — "
-            "the reconciler converges once safe"
+            f"revoked {r['revoked']} grant(s); timekpr NOT narrowed now (would cut the active "
+            "session) — the reconciler converges once safe"
         )
         return
-    transport.apply(changes)
-    click.echo(f"revoked {n} grant(s); {len(changes)} timekpr change(s) applied")
+    click.echo(f"revoked {r['revoked']} grant(s); {len(r['applied'])} timekpr change(s) applied")
 
 
 @enforce_grp.command("games")
@@ -1139,7 +1027,8 @@ def enforce_revoke(user: str) -> None:
     metavar="DIR",
     help="Stop treating this remembered game dir as a game (repeatable).",
 )
-def enforce_games(forget: tuple[str, ...]) -> None:
+@_JSON_FLAG
+def enforce_games(forget: tuple[str, ...], as_json: bool) -> None:
     """List the game dirs familymon budgets (remembered + installed now).
 
     A game stays on the list after it disappears from the Steam library, so
@@ -1147,22 +1036,20 @@ def enforce_games(forget: tuple[str, ...]) -> None:
     parent removes one, with --forget. The next `enforce apply` (hourly)
     updates timekpr's masks.
     """
-    from familymon.capture.games import load_known_games, save_known_games
-    from familymon.config import state_dir
+    from familymon.ops import games_forget, games_known, to_json
 
-    path = state_dir() / "known_games.json"
     if forget:
-        known = load_known_games(path)
-        missing = [d for d in forget if d not in known]
-        if missing:
-            raise click.ClickException(f"not remembered: {', '.join(missing)}")
-        save_known_games(path, known - set(forget))
+        _ops(games_forget, forget)
         click.echo(
             f"forgot {len(forget)} game dir(s); one still installed is re-added on the next scan"
         )
         return
-    for d in sorted(load_known_games(path)):
-        click.echo(f"  {d}{'' if os.path.isdir(d) else '  (not installed now)'}")
+    r = games_known()
+    if as_json:
+        click.echo(to_json(r))
+        return
+    for g in r["games"]:
+        click.echo(f"  {g['dir']}{'' if g['installed'] else '  (not installed now)'}")
 
 
 @enforce_grp.command("web-block")
@@ -1484,19 +1371,148 @@ async def _capture_supervise() -> None:
 
 
 def _game_library(user: str):
-    """The monitored user's games: their Steam library as scanned now, plus
-    every game seen installed before (games.py, KnownGames)."""
-    import pwd
-    from pathlib import Path
+    """The monitored user's games (ops.game_library), as a click error on a bad user."""
+    from familymon.ops import game_library
 
-    from familymon.capture.games import GameLibrary
-    from familymon.config import state_dir
+    return _ops(game_library, user)
 
+
+# ---- policy and config files --------------------------------------------------
+
+
+@main.group("policy")
+def policy_grp() -> None:
+    """Read, validate and replace policy.yaml in place (no file copying)."""
+
+
+@policy_grp.command("get")
+@_JSON_FLAG
+def policy_get(as_json: bool) -> None:
+    """Print policy.yaml as it is (comments included); --json adds its parsed meaning."""
+    from familymon.ops import policy_read, to_json
+
+    r = policy_read()
+    if not r["exists"]:
+        raise click.ClickException(f"no policy at {r['path']}")
+    if as_json:
+        click.echo(to_json(r))
+        return
+    click.echo(r["text"], nl=False)
+
+
+@policy_grp.command("validate")
+@click.argument("source", required=False)
+@_JSON_FLAG
+def policy_validate(source: str | None, as_json: bool) -> None:
+    """Check a policy document (a file, '-' for stdin, default: the live
+    policy) against every parser that reads policy.yaml. Exit 1 if invalid."""
+    from familymon.config import policy_path
+    from familymon.ops import to_json, validate_policy
+
+    text = _read_source(source) if source else _read_source(str(policy_path()))
+    r = validate_policy(text)
+    if as_json:
+        click.echo(to_json(r))
+    elif r["ok"]:
+        s = r["summary"]
+        click.echo(f"policy OK: user {s['user']}, lockout {s['lockout']}")
+        for day, span in s["allowed_hours"].items():
+            click.echo(f"  {day[:3]}: {span}  limit={s['daily_limits'][day]}")
+        games = s["games"]
+        click.echo(
+            f"  games: {'on' if games['enabled'] else 'off'}; browser games charged: "
+            f"{games['charge_browser_games']} ({games['charge_browser_games_when']})"
+        )
+        click.echo(f"  web_block: {'on' if s['web_block']['enabled'] else 'off'}")
+        pt = ", ".join(
+            f"{day[:3]} {rule['from']}-{rule['until']}"
+            for day, rule in s["personal_time"].items()
+            if rule
+        )
+        click.echo(f"  personal_time: {pt or 'none'}")
+        click.echo(f"  retention: {s['retention_screenshot_days']} day(s) of screenshots")
+    else:
+        for err in r["errors"]:
+            click.echo(f"  ! {err}", err=True)
+    if not r["ok"]:
+        raise SystemExit(1)
+
+
+@policy_grp.command("set")
+@click.argument("source")
+def policy_set(source: str) -> None:
+    """Replace policy.yaml with a complete document (a file, or '-' for
+    stdin) after validating it. The previous file is kept as
+    policy.yaml.prev. Nothing is applied: the output says what makes each
+    change take effect (usually `enforce plan`, then `enforce apply`)."""
+    from familymon.ops import policy_write
+
+    r = _ops(policy_write, _read_source(source))
+    prev = f" (previous kept at {r['previous_saved_to']})" if r["previous_saved_to"] else ""
+    click.echo(f"wrote {r['path']}{prev}")
+    if not r["changed_keys"]:
+        click.echo("  no top-level key changed")
+    for key, effect in r["takes_effect"].items():
+        click.echo(f"  {key}: {effect}")
+
+
+@main.group("config")
+def config_grp() -> None:
+    """Read and replace the parent-editable config files (/etc/familymon overrides)."""
+
+
+@config_grp.command("list")
+def config_list() -> None:
+    """The config files this can manage, and whether an override exists."""
+    from familymon.ops import CONFIG_FILES, config_read
+
+    for name in sorted(CONFIG_FILES):
+        r = config_read(name)
+        click.echo(f"  {name:22} {'override' if r['overridden'] else 'bundled '}  {r['path']}")
+
+
+@config_grp.command("get")
+@click.argument("name")
+def config_get(name: str) -> None:
+    """Print a config file as resolved now (override if present, else bundled)."""
+    from familymon.ops import config_read
+
+    click.echo(_ops(config_read, name)["text"], nl=False)
+
+
+@config_grp.command("set")
+@click.argument("name")
+@click.argument("source")
+def config_set(name: str, source: str) -> None:
+    """Write a config override (a file, or '-' for stdin) after validating
+    it with the loader that will read it. The previous override is kept as
+    <name>.prev."""
+    from familymon.ops import config_write
+
+    r = _ops(config_write, name, _read_source(source))
+    prev = f" (previous kept at {r['previous_saved_to']})" if r["previous_saved_to"] else ""
+    click.echo(f"wrote {r['path']}{prev}")
+    click.echo(f"  takes effect: {r['takes_effect']}")
+
+
+# ---- MCP -------------------------------------------------------------------------
+
+
+@main.command("mcp")
+def mcp_cmd() -> None:
+    """Serve the operator surface as MCP tools on stdin/stdout.
+
+    For the parent's AI agent, launched over SSH (`ssh kid-laptop sudo -n
+    familymonctl mcp`): the same operations as the CLI, as typed tools.
+    Nothing listens on the network. Runs as root in production.
+    """
     try:
-        home = Path(pwd.getpwnam(user).pw_dir)
-    except KeyError:
-        raise click.ClickException(f"user {user!r} does not exist") from None
-    return GameLibrary.from_system(home=home, known_path=state_dir() / "known_games.json")
+        from familymon.mcp_server import run_stdio
+    except ImportError as e:
+        raise click.ClickException(
+            f"the MCP server needs the 'mcp' extra (uv sync --extra mcp): {e}"
+        ) from None
+    run_stdio()
 
 
 # ---- extension ----------------------------------------------------------------

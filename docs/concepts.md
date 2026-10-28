@@ -31,6 +31,7 @@ Monitoring is disclosed to the kid. It is not covert.
 4. **Gate on real exit codes.** Do not chain a test run through a pipe into a build or publish step (`pytest | tail && build` hides the exit code). Verify and ship in separate steps.
 5. **Read the capture DB read-only from jobs that only report on it** (SQLite URI `mode=ro`): chargeback, `events`, the dashboard. The capture supervisor, classifier and heartbeat are the only writers.
 6. **Every operator command runs as root** (`sudo familymonctl ...`). The kid has no access to familymon's state, so there is no "run it as the kid" any more.
+7. **Two ways in, same rules.** The agent reaches familymon either by SSH plus `sudo familymonctl ...`, or through the MCP tools (`mcp__familymon__*`, served by `familymonctl mcp` over SSH) when the parent has connected them. Both call the same operations, so every rule above applies unchanged; the tools are listed in [reference/mcp.md](reference/mcp.md).
 
 See [develop/testing-and-shipping.md](develop/testing-and-shipping.md) and [operate/verify-and-health.md](operate/verify-and-health.md).
 

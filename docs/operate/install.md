@@ -1,6 +1,6 @@
 # Install familymon
 
-Read this when you must install familymon on the monitored laptop (`kid-laptop`), start its units for the monitored account (`kid`), run first-run checks, reach the dashboard, upgrade from a per-user release, or create the `kid` account. For configuring policy after install see [configure-from-intent.md](configure-from-intent.md). To prove changes took effect see [verify-and-health.md](verify-and-health.md). Terms are defined in [../concepts.md](../concepts.md). Paths and units are listed in [../reference/files-and-units.md](../reference/files-and-units.md).
+Read this when you must install familymon on the monitored laptop (`kid-laptop`), start its units for the monitored account (`kid`), run first-run checks, reach the dashboard, connect the parent's agent over MCP, upgrade from a per-user release, or create the `kid` account. For configuring policy after install see [configure-from-intent.md](configure-from-intent.md). To prove changes took effect see [verify-and-health.md](verify-and-health.md). Terms are defined in [../concepts.md](../concepts.md). Paths and units are listed in [../reference/files-and-units.md](../reference/files-and-units.md).
 
 Conventions: "the parent" decides policy. Commands marked `root` need sudo. Anything not confirmed in the code is marked UNVERIFIED.
 
@@ -35,14 +35,14 @@ Do this before installing capture. The account must be a standard, non-admin use
 
 Why:
 - A user in `sudo`/`admin` can stop or edit anything familymon runs as root. That is now everything: the capture supervisor and every timer, `/etc/familymon/*`, `/etc/opt/chrome/policies/managed/`, `/etc/timekpr/`, and `/var/lib/familymon/`.
-- A standard user cannot stop, mask or edit any of it, and cannot open `/var/lib/familymon` (root:`familymon` 0750). What the kid can still do is limited to making capture ticks fail, which is detected, not prevented (see section 11).
+- A standard user cannot stop, mask or edit any of it, and cannot open `/var/lib/familymon` (root:`familymon` 0750). What the kid can still do is limited to making capture ticks fail, which is detected, not prevented (see section 12).
 - Trust-resistant rule: the app-category lookup deliberately ignores `~/.local/share/applications` because the kid can forge it. Game detection keys on the installed Steam library plus a curated list, not on anything the kid controls.
 
 Generic Debian/Ubuntu command, root. This is OS administration, not a familymon command:
 
 ```bash
 sudo adduser kid
-id kid        # verify: groups must NOT include sudo, admin or wheel (adm: see section 11)
+id kid        # verify: groups must NOT include sudo, admin or wheel (adm: see section 12)
 ```
 
 Parent decides: the parent keeps a separate admin account. Do not give `kid` a password-less sudo rule. Do not add `kid` to the `timekpr` group (that group may drive timekpr over D-Bus, per the `enforce` help text).
@@ -77,7 +77,7 @@ ls /usr/share/familymon/ /etc/familymon/
 
 Expected under `/etc/familymon/`: `messaging_apps.yaml`, `game_apps.yaml`, `schedule_extras.yaml` (dpkg conffiles: local edits are preserved on upgrade). `/usr/share/familymon/` holds `policy_example.yaml` and `chrome-extension/` (`familymon.crx`, `update.xml`, `id`, `version`). The deb also installs `/usr/share/applications/familymon.desktop`.
 
-Upgrades: on every `configure` the postinst makes sure the `familymon` account exists, forces `/etc/familymon/dashboard.env` to root:root 0600, makes `/var/lib/familymon` root:`familymon` 0750, retires any old per-user units (section 11), runs `daemon-reload`, enables the capture and dashboard services and the seven timers, and restarts the two services so they never keep old code in memory. Lesson: after an upgrade, if behaviour looks stale compare the unit's `ActiveEnterTimestamp` with the package install time (see [verify-and-health.md](verify-and-health.md)).
+Upgrades: on every `configure` the postinst makes sure the `familymon` account exists, forces `/etc/familymon/dashboard.env` to root:root 0600, makes `/var/lib/familymon` root:`familymon` 0750, retires any old per-user units (section 12), runs `daemon-reload`, enables the capture and dashboard services and the seven timers, and restarts the two services so they never keep old code in memory. Lesson: after an upgrade, if behaviour looks stale compare the unit's `ActiveEnterTimestamp` with the package install time (see [verify-and-health.md](verify-and-health.md)).
 
 ## 5. State directory
 
@@ -119,13 +119,13 @@ sudo systemctl restart familymon-capture.service
 
 Because the enforce, chargeback and webblock timers are enabled as soon as `policy.yaml` exists, preview the policy with `plan` and the `--dry-run` forms before you save it, or keep the relevant sections off (`games.enabled: false`, `web_block.enabled: false`) until the parent has agreed.
 
-Check them (section 9). Undo: `sudo systemctl disable --now <unit>`. Disabling the capture, heartbeat or enforce units stops monitoring or enforcement for the kid, so the parent decides. Disabling the enforce timer does not revert what was already applied to timekpr. Use `familymonctl enforce plan` and `enforce apply` to converge, or change timekpr by hand. Note that `apt` re-enables everything on the next upgrade.
+Check them (section 10). Undo: `sudo systemctl disable --now <unit>`. Disabling the capture, heartbeat or enforce units stops monitoring or enforcement for the kid, so the parent decides. Disabling the enforce timer does not revert what was already applied to timekpr. Use `familymonctl enforce plan` and `enforce apply` to converge, or change timekpr by hand. Note that `apt` re-enables everything on the next upgrade.
 
 Notes:
 - `familymon-enforce.service` exits 3 and shows failed when the apply guard refuses (it would cut an active session). That is a refusal, not a crash. Read [verify-and-health.md](verify-and-health.md).
 - Chrome policy only bites on navigation. Already-open tabs are closed by the force-installed extension. A Chrome started with `--disable-extensions` runs without it, so the lesson-time sweep closes it.
 - The `--dry-run` of web-block still scans processes read-only. It does not kill.
-- Nothing runs inside the kid's session between capture ticks. Each tick starts a short-lived helper as `kid` from root-owned code. Do not take a raw screenshot of their session to confirm anything (see section 9).
+- Nothing runs inside the kid's session between capture ticks. Each tick starts a short-lived helper as `kid` from root-owned code. Do not take a raw screenshot of their session to confirm anything (see section 10).
 - Dev only: `deploy/systemd/user/` holds user units for running `familymonctl capture-run` inside your own session on a developer machine. They are not packaged; do not use them for installs.
 
 ## 7. Schedule (optional but needed for web-block, warnings, conflicts)
@@ -168,7 +168,37 @@ sudo systemctl restart familymon-dashboard.service
 
 Routes (all need auth, metadata only, no screenshot route): `GET /`, `GET /d/YYYY-MM-DD`, `GET /api/captures?day=`, `GET /api/stats?day=`. The banner shows the capture heartbeat (see [verify-and-health.md](verify-and-health.md)) and, when there were problems that day, a red line counting failed captures and rejected forged window-list pushes.
 
-## 9. First-run checks
+## 9. MCP for the parent's agent (optional)
+
+The agent can operate familymon through typed MCP tools instead of typing `ssh kid-laptop sudo familymonctl ...`. The server is `familymonctl mcp`: stdio only, launched by the parent's agent over SSH, running as root for the length of the session. Nothing listens on the network and the monitored account cannot reach it. Tool list and permissions: [../reference/mcp.md](../reference/mcp.md).
+
+The package ships `/etc/sudoers.d/familymon-mcp` (a conffile, mode 0440): `%familymon-admin ALL=(root) NOPASSWD: /usr/bin/familymonctl mcp`. The postinst creates the empty system group `familymon-admin`. The parent's SSH key already reached root through password sudo, so the trust boundary does not move; one fixed command just needs no password.
+
+1. On the laptop, add the parent's own account (`parent`) to the group, root. Group membership applies at the next SSH login:
+
+   ```bash
+   sudo usermod -aG familymon-admin parent
+   ```
+
+   Safety: never add `kid` to this group (see [../develop/tamper-resistance.md](../develop/tamper-resistance.md)). Undo: `sudo gpasswd -d parent familymon-admin`.
+
+2. Check from the parent's machine. The sudoers rule names the arguments, so sudo allows exactly `familymonctl mcp` and nothing else (not even `--help`). Starting the server with stdin closed makes it exit 0 at once if sudo let it run; `sudo: a password is required` means the account is not in the group yet, or has not logged in again since:
+
+   ```bash
+   ssh kid-laptop sudo -n familymonctl mcp </dev/null; echo "exit=$?"
+   ```
+
+3. Register the server with the agent, on the parent's machine (Claude Code shown), then restart the session. The tools appear as `mcp__familymon__<tool>`:
+
+   ```bash
+   claude mcp add --scope user familymon -- ssh kid-laptop sudo -n familymonctl mcp
+   ```
+
+4. Permissions. Auto-allow the read-only tools. Keep a prompt on `enforce_apply`, `grant` and `grant_revoke` (they are marked destructive), and optionally on the write tools (`policy_set`, `config_set`, `schedule_import`, `schedule_refresh`, `games_forget`); these keep a `.prev` copy for undo.
+
+If the check fails, see "MCP server does not start / tools missing" in [troubleshoot.md](troubleshoot.md).
+
+## 10. First-run checks
 
 Run in order. Details of how to read each result are in [verify-and-health.md](verify-and-health.md).
 
@@ -180,9 +210,11 @@ Run in order. Details of how to read each result are in [verify-and-health.md](v
 6. Notifications: `sudo familymonctl schedule notify-tick --test` (prints "no session to notify" if the kid is not logged in). Safety: this pops a real notification on their screen, so warn them. Confirm via Plasma's notification history or D-Bus state, not a screenshot. Plasma may only show popups for apps with a desktop entry. Familymon ships `/usr/share/applications/familymon.desktop` (`NoDisplay=true`) and sends the `desktop-entry` hint so they pop up.
 7. Enforcement: `sudo familymonctl enforce plan`, review, then `sudo familymonctl enforce apply`, then `sudo familymonctl enforce show kid` after a few seconds.
 
+8. Optional, if the MCP server is set up (section 9): `ssh kid-laptop sudo -n familymonctl mcp </dev/null` exits 0 without a password prompt, and the agent's `health` tool returns the same facts as step 2.
+
 Safety (screenshots): never take a raw screenshot of the monitored session for diagnostics. It bypasses messaging-window redaction.
 
-## 10. Uninstall or roll back
+## 11. Uninstall or roll back
 
 ```bash
 sudo apt remove familymon
@@ -190,7 +222,7 @@ sudo apt remove familymon
 
 The prerm disables and stops the capture and dashboard services and all seven timers on `remove`. There is no postrm. The Chrome policy file, timekpr settings, the `familymon` system account and `/var/lib/familymon` (captures, screenshots, policy, grants) are not removed. Remove `/etc/opt/chrome/policies/managed/familymon.json` and reset timekpr by hand if the parent wants a clean state, and delete `/var/lib/familymon` only if the parent wants the data gone.
 
-## 11. Upgrading from a per-user release
+## 12. Upgrading from a per-user release
 
 Earlier releases ran capture, classify, heartbeat, notify and the dashboard as the kid's user units and kept their data in `~kid/.local/state/familymon/`. The kid owned all of that and could stop it. Installing the current package moves everything to root. The postinst does this automatically:
 

@@ -23,6 +23,8 @@ Conventions: monitored account `kid`, parent "the parent", laptop `kid-laptop`, 
 | Curated game list | `/etc/familymon/game_apps.yaml` | root | Re-read when the supervisor scans the game library (at start and every 30 min); `sudo systemctl restart familymon-capture.service` applies it at once. This list does not feed timekpr: the PlayTime masks come from the kid's installed Steam library plus `games.extra_masks`, rescanned on each `enforce plan`/`apply` |
 | Domain categories, title brands | bundled `domains_starter.yaml`, `title_brands.yaml`. Override by creating `/etc/familymon/<name>` (not installed by default) | root | Next tick of the consumer (web-block every minute, `classify` every 5 minutes) |
 
+Reading and replacing without copying files: `sudo familymonctl policy get` prints `policy.yaml` as it is (`--json` adds its parsed meaning); `policy validate [SOURCE]` checks a document against every parser that reads it; `policy set SOURCE` (a file, or `-` for stdin) validates, replaces the whole file, keeps `policy.yaml.prev`, and applies nothing: its output says what makes each changed key take effect. The MCP tools `policy_get`, `policy_validate` and `policy_set` do the same (see [../reference/mcp.md](../reference/mcp.md)). The config overrides under `/etc/familymon` work the same way: `config list`, `config get NAME`, `config set NAME SOURCE` (validated with the loader that will read it, previous override kept as `<name>.prev`). `policy set` replaces the whole document, so start from `policy get`, edit the text and keep the comments.
+
 Facts that cause mistakes:
 
 - `policy.yaml` and `schedule.yaml` do **not** honour `/etc/familymon` or `$FAMILYMON_CONFIG_DIR`.
@@ -413,6 +415,8 @@ Preview: `sudo familymonctl personal-time` prints the window and whether it is i
 9. **Verify with real exit codes.** Run the verification as its own step after the apply. Do not pipe a check into the next action. Then follow [verify-and-health.md](verify-and-health.md), including `familymonctl health`.
 10. **Typos are silent.** After editing `policy.yaml`, confirm the preview shows the change you intended. A preview that shows "nothing to do" when you expected a change usually means a misspelled key.
 11. **Disclosure.** Monitoring is disclosed to the kid. Do not configure anything meant to be hidden from them.
+
+In tool terms (MCP connected), the preview, apply, verify chain for a policy change is: `policy_get`, edit the text, `policy_validate`, show the parent the summary, `policy_set`, `enforce_plan`, `enforce_apply` (only after the parent agrees; it refuses to cut the live session unless `force` is set, and `force` needs the parent's explicit word), then `enforce_show` and `health`. One-off extensions are the `grant` tool, never a policy edit. The write tools keep a `.prev` copy, which is the undo.
 
 ## 6. Open points
 

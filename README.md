@@ -35,6 +35,7 @@ Parents supervising their own minor children, **openly**. The child knows the la
 - **Enforces** through [timekpr-next](https://github.com/polesapart/timekpr-next): allowed hours, daily budgets, and game budgets for games detected from the installed Steam library plus a parent list. A policy file is reconciled every hour, with a guard that refuses to cut a live session; one-off grants extend a day without being reverted; browser-game minutes, which timekpr can't see, are charged to the same budget.
 - **Blocks during lessons** with Chrome's managed policy: a URL blocklist by category, a force-installed extension that closes tabs already open on blocked sites, private windows off. Other browsers and listed apps are closed while a lesson runs.
 - **Resists tampering.** Everything runs as root with state the child can't read; the only familymon code that runs under the child's account is a short-lived capture helper, once per tick. What the child can still do (log out, kill the helper) is detected and shown, never silent. See [docs/develop/tamper-resistance.md](docs/develop/tamper-resistance.md).
+- **Operable by the parent's AI agent as MCP tools.** The same operator surface (status, health, policy get/validate/set, enforce plan/apply, grants and more) is available as typed MCP tools over SSH (`familymonctl mcp`, stdio, nothing listens on the network), with per-tool permissions. See [docs/reference/mcp.md](docs/reference/mcp.md).
 - **Checks itself.** A root heartbeat knows whether the child is logged in; `familymonctl health` audits the data, including a hard privacy check; a damaged database recovers itself when opened.
 
 ## Privacy
@@ -69,6 +70,7 @@ Build the package on another machine (`scripts/build-deb.sh`), publish it to a f
 | [docs/concepts.md](docs/concepts.md) | How the parts fit together |
 | [docs/operate/](docs/operate/) | Install, configure from the parent's intent, verify, troubleshoot |
 | [docs/reference/](docs/reference/) | CLI, configuration, files, units and events |
+| [docs/reference/mcp.md](docs/reference/mcp.md) | The MCP tools the parent's agent can use over SSH |
 | [docs/develop/](docs/develop/) | Architecture, tamper resistance, testing and shipping |
 | [docs/design/](docs/design/) | Goals and principles, and the decision log with the reasoning |
 | [docs/PLAN.md](docs/PLAN.md) | The original plan, kept for history; parts of it are superseded |

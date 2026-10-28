@@ -16,6 +16,9 @@
 #   /usr/share/familymon/policy_example.yaml
 #   /usr/share/familymon/chrome-extension/   signed lesson-block extension
 #                                       (crx + update.xml + id), built here
+#   /etc/sudoers.d/familymon-mcp        lets the familymon-admin group (created
+#                                       empty) start `familymonctl mcp` without
+#                                       a password, for the parent's agent over SSH
 #
 # The venv ties to the system python3 minor version — Depends pins it. Both
 # machines track the same Ubuntu release, so this is a non-constraint.
@@ -53,7 +56,7 @@ uv venv --python /usr/bin/python3 --relocatable "$VENV"
 # Runtime extras only: `dev` is an extra too (pytest, ruff, the test HTTP
 # client), and --all-extras used to ship it inside the package.
 UV_PROJECT_ENVIRONMENT="$VENV" uv sync --frozen --no-dev --extra dashboard --extra analyze \
-    --no-editable --reinstall-package familymon
+    --extra mcp --no-editable --reinstall-package familymon
 
 # Sanity: the venv must point at the system interpreter.
 TARGET="$(readlink -f "$VENV/bin/python3")"
@@ -102,6 +105,10 @@ install -D -m 0644 familymon/defaults/policy_example.yaml \
 # (popups on by default) instead of "[@other]", which users often mute.
 install -D -m 0644 deploy/deb/familymon.desktop \
     "$STAGING/usr/share/applications/familymon.desktop"
+# The one sudoers line behind `ssh kid-laptop sudo -n familymonctl mcp`. A
+# sudoers file with a syntax error locks sudo out, so it is checked here.
+/usr/sbin/visudo -c -q -f deploy/deb/sudoers/familymon-mcp
+install -D -m 0440 deploy/deb/sudoers/familymon-mcp "$STAGING/etc/sudoers.d/familymon-mcp"
 
 # ---- package metadata -------------------------------------------------------
 INSTALLED_SIZE="$(du -sk --exclude=DEBIAN "$STAGING" | cut -f1)"
@@ -136,6 +143,10 @@ OLD_USER_UNITS="familymon-capture.service familymon-dashboard.service familymon-
 if [ "$1" = "configure" ]; then
     if ! getent passwd familymon >/dev/null; then
         adduser --system --group --no-create-home --home /nonexistent --quiet familymon
+    fi
+    # Empty by default: the parent adds their own account to it (install guide).
+    if ! getent group familymon-admin >/dev/null; then
+        addgroup --system --quiet familymon-admin
     fi
     # The dashboard password: read by systemd as root, by nobody else.
     if [ -f /etc/familymon/dashboard.env ]; then
@@ -190,6 +201,7 @@ cat > "$STAGING/DEBIAN/conffiles" <<EOF
 /etc/familymon/messaging_apps.yaml
 /etc/familymon/game_apps.yaml
 /etc/familymon/schedule_extras.yaml
+/etc/sudoers.d/familymon-mcp
 EOF
 
 # ---- build + smoke ----------------------------------------------------------
