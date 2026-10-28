@@ -90,6 +90,10 @@ EXT_KEY="$REPO/private/chrome-extension-key.pem"
     --version "1.$(date +%y%m).$(date +%-d).$(date +%-H%M)"
 
 # ---- filesystem payload -----------------------------------------------------
+# uv materializes the venv from its cache and keeps the cached modes, which
+# predate the umask above; nothing in the package may be group- or
+# world-writable (it all runs as root).
+chmod -R go-w "$VENV"
 install -D -m 0755 deploy/deb/bin/familymonctl "$STAGING/usr/bin/familymonctl"
 # Every unit is system-scope: the monitored user can neither stop nor mask
 # them (docs/develop/tamper-resistance.md).
