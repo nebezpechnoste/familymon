@@ -8,11 +8,10 @@ whole screenshot when a region can't be located safely. Window metadata is
 always recorded; the teen's private chats never hit disk as image bytes.
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
 
 import yaml
 
@@ -23,7 +22,7 @@ class MessagingSkipList:
     title_patterns: tuple[re.Pattern[str], ...]
 
     @classmethod
-    def from_file(cls, path: Path | None = None) -> MessagingSkipList:
+    def from_file(cls, path: Path | None = None) -> Self:
         # Resolved at call time so /etc/familymon and FAMILYMON_CONFIG_DIR
         # overrides are honored — this file is the privacy contract the parent
         # (and teen) edit on the deployed machine.

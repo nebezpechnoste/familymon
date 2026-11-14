@@ -3,14 +3,13 @@
 Everything runs against a temp state dir and a fake timekpr transport; no
 real process, D-Bus or /etc is touched."""
 
-from __future__ import annotations
-
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from sqlalchemy import select
 
 from familymon import ops
 from familymon.cli import main
@@ -129,7 +128,7 @@ def test_policy_write_keeps_previous_logs_event_and_names_effects(state: Path):
         "daily_limits": "enforce plan, then enforce apply (or the hourly reconciler)"
     }
     with make_session_factory(make_engine(state / "captures.db"))() as s:
-        ev = s.query(Event).filter_by(kind="policy_changed").one()
+        ev = s.scalars(select(Event).where(Event.kind == "policy_changed")).one()
     assert ev.data["changed"] == ["daily_limits"]
 
 

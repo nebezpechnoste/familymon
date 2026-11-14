@@ -16,8 +16,6 @@ inside a date-named directory is left alone, and a directory that still has
 something in it is kept.
 """
 
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta

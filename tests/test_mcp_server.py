@@ -2,8 +2,6 @@
 and in-process calls. Everything runs against a temp state dir; the timekpr
 transport is a fake."""
 
-from __future__ import annotations
-
 import json
 from datetime import datetime
 from pathlib import Path

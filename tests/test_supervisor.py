@@ -4,8 +4,6 @@ No real session, logind, setpriv or KWin is touched: the probe is injected,
 and run_probe only ever runs a Python one-liner the test itself spawns.
 """
 
-from __future__ import annotations
-
 import io
 import stat
 import sys
@@ -102,7 +100,6 @@ def _events(sessions) -> list[Event]:
         return list(s.scalars(select(Event).order_by(Event.id)))
 
 
-@pytest.mark.asyncio
 async def test_no_session_skips_without_probing_or_recording(sessions):
     tick, asked, persistence = await _tick(sessions, NONE, ProbeOutcome(_result()))
     assert tick.skipped == "no_session"
@@ -111,7 +108,6 @@ async def test_no_session_skips_without_probing_or_recording(sessions):
     assert _events(sessions) == []
 
 
-@pytest.mark.asyncio
 async def test_good_probe_is_persisted_with_roots_clock(sessions):
     tick, asked, persistence = await _tick(
         sessions, ACTIVE, ProbeOutcome(_result(screenshot_bytes=_png()))
@@ -123,13 +119,11 @@ async def test_good_probe_is_persisted_with_roots_clock(sessions):
     assert _events(sessions) == []
 
 
-@pytest.mark.asyncio
 async def test_locked_session_asks_the_probe_to_skip_the_screenshot(sessions):
     _, asked, _ = await _tick(sessions, LOCKED, ProbeOutcome(_result()))
     assert asked == ["session_locked"]
 
 
-@pytest.mark.asyncio
 async def test_personal_time_skips_the_screenshot_and_flags_the_row(sessions):
     tick, asked, persistence = await _tick(
         sessions, ACTIVE, ProbeOutcome(_result()), personal_time=True
@@ -139,7 +133,6 @@ async def test_personal_time_skips_the_screenshot_and_flags_the_row(sessions):
     assert _events(sessions) == []
 
 
-@pytest.mark.asyncio
 async def test_a_locked_session_in_personal_time_still_classifies_as_idle(sessions):
     """The session reason wins: a locked screen must not be billed as the
     game that was left open behind it."""
@@ -150,7 +143,6 @@ async def test_a_locked_session_in_personal_time_still_classifies_as_idle(sessio
     assert persistence.write.call_args.kwargs["personal_time"] is True
 
 
-@pytest.mark.asyncio
 async def test_outside_personal_time_rows_are_not_flagged(sessions):
     _, asked, persistence = await _tick(sessions, ACTIVE, ProbeOutcome(_result()))
     assert asked == [None] and persistence.write.call_args.kwargs["personal_time"] is False
@@ -177,7 +169,6 @@ def test_gate_treats_an_unusable_policy_as_no_personal_time_and_warns_once(caplo
     assert len(warnings) == 1 and "monitoring in full" in warnings[0].getMessage()
 
 
-@pytest.mark.asyncio
 async def test_failed_probe_with_a_session_is_recorded_not_persisted(sessions):
     tick, _, persistence = await _tick(sessions, ACTIVE, ProbeOutcome(None, "probe exited -9"))
     assert tick.error == "probe exited -9"
@@ -187,7 +178,6 @@ async def test_failed_probe_with_a_session_is_recorded_not_persisted(sessions):
     assert ev.data == {"error": "probe exited -9", "session": "active"}
 
 
-@pytest.mark.asyncio
 async def test_missing_window_list_counts_as_a_failure(sessions):
     """A tick that saw nothing must not refresh the heartbeat."""
     tick, _, persistence = await _tick(
@@ -198,7 +188,6 @@ async def test_missing_window_list_counts_as_a_failure(sessions):
     assert [e.kind for e in _events(sessions)] == ["capture_failed"]
 
 
-@pytest.mark.asyncio
 async def test_rejected_pushes_are_recorded_as_tamper_evidence(sessions):
     tick, _, _ = await _tick(sessions, ACTIVE, ProbeOutcome(_result(sink_rejected=3)))
     assert tick.capture_id == 7
@@ -206,7 +195,6 @@ async def test_rejected_pushes_are_recorded_as_tamper_evidence(sessions):
     assert ev.kind == "capture_tamper" and ev.data["sink_rejected"] == 3
 
 
-@pytest.mark.asyncio
 async def test_game_detection_runs_root_side(sessions):
     gamelib = Mock()
     gamelib.is_game = Mock(return_value=True)
@@ -225,7 +213,6 @@ def _py(code: str) -> list[str]:
     return [sys.executable, "-c", code]
 
 
-@pytest.mark.asyncio
 async def test_run_probe_parses_output_and_passes_the_request():
     payload = _result(screenshot_bytes=b"\x89PNG").model_dump_json()
     code = (
@@ -237,19 +224,16 @@ async def test_run_probe_parses_output_and_passes_the_request():
     assert out.error is None and out.result.screenshot_bytes == b"\x89PNG"
 
 
-@pytest.mark.asyncio
 async def test_run_probe_reports_exit_code_and_stderr():
     out = await run_probe(_py("import sys; sys.stderr.write('kwin gone'); sys.exit(3)"), {})
     assert out.result is None and "exited 3" in out.error and "kwin gone" in out.error
 
 
-@pytest.mark.asyncio
 async def test_run_probe_rejects_garbage():
     out = await run_probe(_py('print(\'{"not": "a capture"}\')'), {})
     assert out.result is None and "unreadable" in out.error
 
 
-@pytest.mark.asyncio
 async def test_run_probe_kills_a_hung_probe():
     out = await run_probe(_py("import time; time.sleep(30)"), {}, timeout=0.3)
     assert out.result is None and "timed out" in out.error

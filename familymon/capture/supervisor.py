@@ -33,8 +33,6 @@ What it can't stop: the user can still make a tick fail (kill the helper,
 restart KWin, log out). That is detected, not prevented; see heartbeat.py.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
@@ -42,7 +40,7 @@ import os
 import pwd
 import secrets
 import sys
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -136,19 +134,19 @@ def probe_argv(target: SessionTarget, python: str = sys.executable) -> list[str]
 
 
 @contextmanager
-def kwin_script_drop(directory: Path = KWIN_SCRIPT_DIR) -> Iterator[tuple[Path, str]]:
+def kwin_script_drop(directory: Path = KWIN_SCRIPT_DIR) -> Generator[tuple[Path, str]]:
     """This tick's window-list script, where KWin (running as the user) can
     read it but the user can't change it: a root-owned 0711 directory (no
     listing) holding a root-owned 0644 file with an unguessable name."""
     directory.mkdir(parents=True, exist_ok=True)
-    os.chmod(directory, 0o711)
+    directory.chmod(0o711)
     nonce = new_nonce()
     path = directory / f"winlist-{secrets.token_hex(16)}.js"
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     try:
         with os.fdopen(fd, "w") as f:
             f.write(render_window_list_script(nonce))
-        os.chmod(path, 0o644)
+        path.chmod(0o644)
         yield path, nonce
     finally:
         path.unlink(missing_ok=True)
@@ -196,8 +194,8 @@ async def run_probe(
         return ProbeOutcome(None, f"probe output unreadable: {str(e)[:200]}")
 
 
-Probe = Callable[[str | None], Awaitable[ProbeOutcome]]
-WindowLookup = Callable[[datetime], PersonalTimeWindow | None]
+type Probe = Callable[[str | None], Awaitable[ProbeOutcome]]
+type WindowLookup = Callable[[datetime], PersonalTimeWindow | None]
 
 
 class PersonalTimeGate:

@@ -5,8 +5,6 @@ get written immediately; ambiguous ones (UNKNOWN, low confidence) go to a
 secondary queue for the local VLM and/or Claude Code bootstrap labeling.
 """
 
-from __future__ import annotations
-
 import logging
 from datetime import datetime
 

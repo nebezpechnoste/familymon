@@ -14,13 +14,10 @@ anything the caller did not ask for: writing the policy does not run `apply`,
 and `apply` keeps the live-session guard (`UnsafeNow`) unless `force` is set.
 """
 
-from __future__ import annotations
-
 import contextlib
 import json
 import logging
 import os
-import shutil
 import subprocess
 from dataclasses import asdict
 from datetime import date, datetime, time, timedelta
@@ -105,8 +102,8 @@ def _write_atomic(path: Path, text: str, *, mode: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_text(text)
-    os.chmod(tmp, mode)
-    os.replace(tmp, path)
+    tmp.chmod(mode)
+    tmp.replace(path)
 
 
 def _keep_previous(path: Path, *, unless_equal: str | None = None) -> str | None:
@@ -121,8 +118,7 @@ def _keep_previous(path: Path, *, unless_equal: str | None = None) -> str | None
     prev = path.with_name(path.name + ".prev")
     if unless_equal is not None and path.read_text() == unless_equal:
         return str(prev) if prev.exists() else None
-    shutil.copyfile(path, prev)
-    shutil.copymode(path, prev)
+    path.copy(prev, preserve_metadata=True)
     return str(prev)
 
 
@@ -1019,7 +1015,7 @@ def games_known() -> dict[str, Any]:
 
     dirs = sorted(load_known_games(state_dir() / "known_games.json"))
     return {
-        "games": [{"dir": d, "installed": os.path.isdir(d)} for d in dirs],
+        "games": [{"dir": d, "installed": Path(d).is_dir()} for d in dirs],
         "count": len(dirs),
     }
 
@@ -1084,7 +1080,7 @@ def personal_time_summary(
     target = _day(day) if day else now.date()
     out["day"] = target.isoformat()
     if not db_path().exists():
-        out.update({"hidden_captures": 0, "hidden_game_captures": 0, "hidden_game_minutes": 0})
+        out |= {"hidden_captures": 0, "hidden_game_captures": 0, "hidden_game_minutes": 0}
         return out
     start = datetime.combine(target, time.min)
     in_window = (

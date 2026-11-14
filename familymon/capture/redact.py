@@ -23,8 +23,6 @@ Scope (task #18 A):
     redaction is possible but deferred.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 

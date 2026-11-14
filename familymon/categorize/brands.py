@@ -5,9 +5,8 @@ phase. Browser titles usually carry the site brand even when they don't carry
 the domain.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
+from typing import Self
 
 import yaml
 
@@ -37,7 +36,7 @@ class BrandTitleLookup:
         return None
 
     @classmethod
-    def from_yaml(cls, path: Path | None = None) -> BrandTitleLookup:
+    def from_yaml(cls, path: Path | None = None) -> Self:
         # Resolved at call time so /etc/familymon and FAMILYMON_CONFIG_DIR
         # overrides are honored (see familymon.config.config_file).
         from familymon.config import config_file

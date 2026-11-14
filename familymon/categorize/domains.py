@@ -8,9 +8,8 @@ Matching is apex-aware: observing `m.youtube.com` matches the entry
 every suffix of the observed hostname.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
+from typing import Self
 
 import yaml
 
@@ -53,7 +52,7 @@ class DomainCategoryLookup:
         return None
 
     @classmethod
-    def from_yaml(cls, path: Path | None = None) -> DomainCategoryLookup:
+    def from_yaml(cls, path: Path | None = None) -> Self:
         from familymon.config import config_file
 
         path = path or config_file("domains_starter.yaml")

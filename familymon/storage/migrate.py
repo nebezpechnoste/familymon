@@ -23,8 +23,6 @@ itself a symlink at any level below the home directory.
 Idempotent and resumable: a marker file per user records progress.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import shutil
@@ -170,7 +168,7 @@ def _move_screenshots(src_shots: Path, dst_shots: Path) -> int:
         for f in day.iterdir():
             if f.is_symlink() or not f.is_file():
                 continue
-            shutil.move(str(f), str(target_day / f.name))
+            shutil.move(f, target_day / f.name)
             moved += 1
     return moved
 
@@ -229,11 +227,11 @@ def migrate_user_state(
     if db_pending:
         if dst_db.exists():
             report.events_carried, report.root_captures_carried = _carry_root_rows(new_db, dst_db)
-            shutil.move(str(dst_db), str(backup / "captures.db.root-before-migration"))
+            shutil.move(dst_db, backup / "captures.db.root-before-migration")
             for side in ("-journal", "-wal", "-shm"):
                 p = dst_db.with_name(dst_db.name + side)
                 if p.exists():
-                    shutil.move(str(p), str(backup / (p.name + ".root-before-migration")))
+                    shutil.move(p, backup / (p.name + ".root-before-migration"))
         new_db.replace(dst_db)
         secure(dst_db, shared=True)
         _write_marker(marker, report, "db")
@@ -252,7 +250,7 @@ def migrate_user_state(
 
     # Whatever remains (the old DB file, watermarks, empty screenshot dirs)
     # leaves the user's home for the root-only backup.
-    shutil.move(str(src), str(backup / "state"))
+    shutil.move(src, backup / "state")
     secure_tree(backup)
     secure(dst, shared=True)
 
@@ -263,7 +261,7 @@ def migrate_user_state(
 def _read_marker(marker: Path) -> dict:
     try:
         raw = json.loads(marker.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return {}
     return raw if isinstance(raw, dict) else {}
 

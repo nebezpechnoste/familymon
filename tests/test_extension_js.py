@@ -1,7 +1,5 @@
 """Run the extension's node tests (tests/js) under pytest; skipped without node."""
 
-from __future__ import annotations
-
 import shutil
 import subprocess
 from pathlib import Path

@@ -16,10 +16,7 @@ adjusts a counter the reconciler never touches. They are offered through the
 same CLI for one obvious place to go, and logged as an Event.
 """
 
-from __future__ import annotations
-
 import json
-import os
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, time
 from pathlib import Path
@@ -66,7 +63,7 @@ class GrantStore:
     def _load(self) -> list[Grant]:
         try:
             raw = json.loads(self.path.read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             return []
         out = []
         for g in raw.get("grants") or []:
@@ -81,7 +78,7 @@ class GrantStore:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         tmp = self.path.with_name(f".{self.path.name}.tmp")
         tmp.write_text(json.dumps({"grants": [asdict(g) for g in grants]}, indent=1))
-        os.replace(tmp, self.path)
+        tmp.replace(self.path)
 
     def remove(self, grant: Grant) -> bool:
         """Drop exactly `grant` (the one just added, when applying it failed);

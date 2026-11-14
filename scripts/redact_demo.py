@@ -16,8 +16,6 @@ the point is to confirm the messaging rectangle is blacked and neighbours are
 preserved.
 """
 
-from __future__ import annotations
-
 import asyncio
 import io
 import json

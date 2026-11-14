@@ -10,10 +10,9 @@ all windows here use `datetime.now()` (local-naive) to compare apples to
 apples.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 
 from sqlalchemy import func, select, text
@@ -127,12 +126,7 @@ def compute_health(sessions: sessionmaker, screenshots_dir: Path) -> HealthRepor
                 .order_by(Capture.captured_at)
             )
         )
-        largest_gap = None
-        if len(timestamps) >= 2:
-            largest_gap = max(
-                (timestamps[i + 1] - timestamps[i]).total_seconds()
-                for i in range(len(timestamps) - 1)
-            )
+        largest_gap = max(((b - a).total_seconds() for a, b in pairwise(timestamps)), default=None)
 
         classified_24h = (
             s.scalar(
@@ -151,7 +145,7 @@ def compute_health(sessions: sessionmaker, screenshots_dir: Path) -> HealthRepor
             .where(Capture.captured_at >= h24)
             .group_by(Classification.category)
         ).all()
-        category_counts = {cat: n for cat, n in cat_rows}
+        category_counts = dict(cat_rows)
 
         # pHash dedup is only meaningful for ticks that actually produced
         # screenshot bytes. Session idle/locked ticks skip the backend snapshot

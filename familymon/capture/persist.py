@@ -5,8 +5,6 @@ That keeps the SQLite WAL/journal small and means `VACUUM` doesn't leave deleted
 image blobs in freelist pages. See the privacy section in the README.
 """
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 

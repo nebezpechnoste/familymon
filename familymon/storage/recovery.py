@@ -20,8 +20,6 @@ Rules:
     so `familymonctl health` can surface it.
 """
 
-from __future__ import annotations
-
 import logging
 import shutil
 import sqlite3

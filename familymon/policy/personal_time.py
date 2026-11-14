@@ -24,8 +24,6 @@ runs in the root supervisor, the notify tick and `familymonctl personal-time`;
 the dashboard never needs it, it reads the flag on the rows.
 """
 
-from __future__ import annotations
-
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass

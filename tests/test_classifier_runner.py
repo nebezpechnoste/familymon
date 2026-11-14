@@ -5,8 +5,6 @@ run's transaction rolled back, and every 5-minute timer run died on the same
 row — 14 hours of captures showed as "unknown" on the dashboard.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 
 import pytest

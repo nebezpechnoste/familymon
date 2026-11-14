@@ -13,8 +13,6 @@ to category "school"; the subject becomes the block label. Breaks (in
 only actual lessons are "school" blocks; the parent can add others by hand.
 """
 
-from __future__ import annotations
-
 from familymon.policy.schedule import Schedule, ScheduleBlock, _parse_hhmm
 
 

@@ -10,8 +10,6 @@ Outside root (dev runs) there is no shared group: files are 0600, dirs 0700,
 exactly as before.
 """
 
-from __future__ import annotations
-
 import grp
 import logging
 import os
@@ -48,9 +46,9 @@ def secure(path: Path, *, shared: bool = False) -> None:
             # from the monitored user's home (a rename keeps the old owner).
             os.chown(path, 0, gid if gid is not None else 0, follow_symlinks=False)
         if gid is not None:
-            os.chmod(path, 0o750 if is_dir else 0o640)
+            path.chmod(0o750 if is_dir else 0o640)
         else:
-            os.chmod(path, 0o700 if is_dir else 0o600)
+            path.chmod(0o700 if is_dir else 0o600)
     except OSError as e:
         logger.warning("could not secure %s: %s", path, e)
 
@@ -60,6 +58,6 @@ def secure_tree(root: Path, *, shared: bool = False) -> None:
     secure(root, shared=shared)
     if not root.is_dir() or root.is_symlink():
         return
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in root.walk():
         for name in (*dirnames, *filenames):
-            secure(Path(dirpath) / name, shared=shared)
+            secure(dirpath / name, shared=shared)

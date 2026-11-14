@@ -1,7 +1,5 @@
 """Screenshot retention (storage/retention.py). Everything lives under tmp_path."""
 
-from __future__ import annotations
-
 from datetime import date, datetime, timedelta
 from pathlib import Path
 

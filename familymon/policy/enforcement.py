@@ -32,8 +32,6 @@ policy.yaml shape (see config/policy_example.yaml):
         - minecraft-launcher[Minecraft]
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time

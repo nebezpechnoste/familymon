@@ -19,12 +19,9 @@ signed_header_data | zip. Signing uses the openssl CLI — no new Python
 dependency on the kid's machine, which never builds anything anyway.
 """
 
-from __future__ import annotations
-
 import hashlib
 import io
 import json
-import os
 import struct
 import subprocess
 import tempfile
@@ -70,7 +67,7 @@ def generate_key(path: Path) -> None:
         check=True,
         capture_output=True,
     )
-    os.chmod(path, 0o600)
+    path.chmod(0o600)
 
 
 def public_key_der(key_pem: Path) -> bytes:
@@ -267,7 +264,7 @@ def build_extension(
     (out_dir / ID_NAME).write_text(ext_id + "\n")
     (out_dir / VERSION_NAME).write_text(version + "\n")
     for name in (CRX_NAME, UPDATE_NAME, ID_NAME, VERSION_NAME):
-        os.chmod(out_dir / name, 0o644)
+        (out_dir / name).chmod(0o644)
     return ExtensionRef(
         id=ext_id, update_url=f"file://{deployed_dir}/{UPDATE_NAME}", version=version
     )

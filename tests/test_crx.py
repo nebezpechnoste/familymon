@@ -1,10 +1,7 @@
 """CRX3 packaging of the lesson-block extension: layout, signature, ids."""
 
-from __future__ import annotations
-
 import io
 import json
-import os
 import stat
 import subprocess
 import zipfile
@@ -199,4 +196,4 @@ def test_load_ref_absent_or_corrupt(tmp_path):
     (tmp_path / CRX_NAME).write_bytes(b"x")
     (tmp_path / UPDATE_NAME).write_text("x")
     assert load_extension_ref(tmp_path) is not None
-    os.chmod(tmp_path, 0o755)
+    tmp_path.chmod(0o755)

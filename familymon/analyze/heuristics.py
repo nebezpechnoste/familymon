@@ -26,8 +26,6 @@ Captures suppressed for session reasons (locked / backgrounded) classify as
 IDLE rather than polluting UNKNOWN.
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 

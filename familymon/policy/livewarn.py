@@ -12,8 +12,6 @@ Warnings repeat at most once per cooldown per (lesson, category) so a long
 episode nags rather than spams. State is a small JSON file in the state dir.
 """
 
-from __future__ import annotations
-
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -122,7 +120,7 @@ class WarnStore:
         self._data: dict[str, datetime] = {}
         try:
             raw = json.loads(path.read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             raw = {}
         if isinstance(raw, dict):
             for k, v in raw.items():

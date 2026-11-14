@@ -4,8 +4,6 @@ designing title-pattern redaction rules.
     uv run python scripts/peek_titles.py firefox
 """
 
-from __future__ import annotations
-
 import json
 import sqlite3
 import sys

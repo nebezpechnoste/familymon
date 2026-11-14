@@ -11,8 +11,6 @@ Run on a Plasma 6 Wayland session:
     uv run python scripts/kwin_screenshot_poc.py /tmp/familymon-poc.png
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import sys

@@ -21,8 +21,6 @@ masking as the dashboard, so during personal time app names and titles are
 hidden here too.
 """
 
-from __future__ import annotations
-
 import functools
 import threading
 from collections.abc import Callable

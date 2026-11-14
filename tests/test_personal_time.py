@@ -1,8 +1,6 @@
 """Personal time (policy/personal_time.py) and the kid's once-a-day notice.
 Everything lives under tmp_path; no session, no notify-send."""
 
-from __future__ import annotations
-
 import json
 from datetime import UTC, date, datetime, time, timedelta
 

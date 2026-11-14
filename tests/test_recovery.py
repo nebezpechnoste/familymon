@@ -1,7 +1,5 @@
 """A crash-damaged capture DB must self-heal at open, keeping the original."""
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from sqlalchemy import create_engine, select

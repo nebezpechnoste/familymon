@@ -7,8 +7,6 @@ Priority matters — many .desktop files list several categories (e.g. Telegram 
 the first hit, so MESSAGING wins over the generic Network fallback.
 """
 
-from __future__ import annotations
-
 from familymon.analyze.categories import Category
 
 # Order matters. First matching rule wins.

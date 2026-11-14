@@ -12,8 +12,6 @@ The pure planning logic lives in `enforcement.py`; this module only converts
 D-Bus shapes to `LiveState` and executes `Change` lists.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import subprocess
@@ -38,13 +36,15 @@ class TimekprError(RuntimeError):
 
 def _unwrap(value):
     """Recursively strip dbus_next Variants to plain Python values."""
-    if isinstance(value, Variant):
-        return _unwrap(value.value)
-    if isinstance(value, dict):
-        return {k: _unwrap(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_unwrap(v) for v in value]
-    return value
+    match value:
+        case Variant(value=inner):
+            return _unwrap(inner)
+        case dict():
+            return {k: _unwrap(v) for k, v in value.items()}
+        case list():
+            return [_unwrap(v) for v in value]
+        case _:
+            return value
 
 
 async def _fetch_user_info(user: str) -> dict:
@@ -92,7 +92,7 @@ def _normalize_hours(config: dict) -> tuple[tuple[HourWindow, ...], ...]:
 def _normalize_activities(raw: list) -> tuple[PlayTimeActivity, ...]:
     acts = []
     for pair in raw or []:
-        mask = str(pair[0]) if len(pair) > 0 else ""
+        mask = str(pair[0]) if pair else ""
         desc = str(pair[1]) if len(pair) > 1 else ""
         if mask:
             acts.append(PlayTimeActivity(mask=mask, description=desc))

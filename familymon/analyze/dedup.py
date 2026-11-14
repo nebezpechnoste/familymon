@@ -6,8 +6,6 @@ animation hasn't changed, the same article is on screen, etc. We tag the new
 capture as `same_as_prev` and skip persisting the screenshot to disk.
 """
 
-from __future__ import annotations
-
 import collections
 import io
 

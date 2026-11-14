@@ -8,9 +8,8 @@ familymon.desktop and passing the `desktop-entry` hint makes familymon a
 known app with its own (popups-on by default) settings.
 """
 
-from __future__ import annotations
-
 import subprocess
+from pathlib import Path
 
 DESKTOP_ENTRY = "familymon"  # /usr/share/applications/familymon.desktop
 
@@ -58,7 +57,6 @@ def send_as(
     """Notify another user's desktop session from root (system-scope timers
     such as the lesson web block). Needs that user's session bus; returns
     False when there is none (not logged in)."""
-    import os
     import pwd
 
     try:
@@ -66,7 +64,7 @@ def send_as(
     except KeyError:
         return False
     runtime = f"/run/user/{pw.pw_uid}"
-    if not os.path.exists(f"{runtime}/bus"):
+    if not Path(runtime, "bus").exists():
         return False
     argv = [
         "runuser",

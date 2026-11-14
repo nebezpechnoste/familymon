@@ -54,7 +54,7 @@ What the host should do: encrypt the disk; keep swap off or encrypted, because s
 ## Requirements
 
 - A Linux laptop with systemd and KDE Plasma 6 on Wayland. The capture uses KWin's scripting interface and Spectacle. Developed and used on Ubuntu; shipped as a `.deb`.
-- Python 3.12 or newer (the package bundles its own environment).
+- Python 3.14 or newer (the package bundles its own environment).
 - timekpr-next for time and game enforcement; Google Chrome for lesson-time blocking.
 - The child uses a standard account without sudo, and the firmware and boot loader are password-protected. Familymon does not defend against root or physical access.
 

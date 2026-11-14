@@ -42,7 +42,7 @@ Familymon is local-first parental-control software for a Linux laptop (KDE Plasm
 
 ## Developing
 
-- Python ≥3.12 with `uv`; `uv.lock` is committed. Tests: `uv run pytest -q`, which also runs the Chrome-extension tests under Node when Node is installed. CI runs the same on every push.
+- Python ≥3.14 with `uv`; `uv.lock` is committed. Tests: `uv run pytest -q`, which also runs the Chrome-extension tests under Node when Node is installed. CI runs the same on every push.
 - Keep the privacy design intact: screenshots never leave the machine they were captured on, and messaging windows are never captured to image.
 - Never commit anything that identifies a real family: names, hosts, addresses, schedules, timezones. Tests and examples use the placeholders above. The maintainer's push is additionally guarded by `.githooks/pre-push` against a private denylist.
 - Details: [docs/develop/testing-and-shipping.md](docs/develop/testing-and-shipping.md).

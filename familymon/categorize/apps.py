@@ -14,8 +14,6 @@ Lookup at runtime:
   table. First hit wins.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import re
@@ -23,6 +21,7 @@ from configparser import ConfigParser
 from configparser import Error as ConfigParserError
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
 
 from familymon.analyze.categories import Category
 
@@ -102,7 +101,7 @@ def _exec_basename(exec_command: str | None) -> str | None:
     if not cleaned:
         return None
     first_token = cleaned.split()[0]
-    base = os.path.basename(first_token)
+    base = Path(first_token).name
     return base or None
 
 
@@ -165,7 +164,7 @@ class AppCategoryLookup:
         return None
 
     @classmethod
-    def from_dirs(cls, dirs: list[Path] | None = None) -> AppCategoryLookup:
+    def from_dirs(cls, dirs: list[Path] | None = None) -> Self:
         lookup = cls()
         for directory in dirs if dirs is not None else DEFAULT_APPLICATION_DIRS:
             if not directory.is_dir():

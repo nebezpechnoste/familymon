@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import logging
@@ -206,7 +204,7 @@ async def _monitored_session_label() -> str:
 
         try:
             uid = pwd.getpwnam(monitored_user()).pw_uid
-        except (LookupError, KeyError):
+        except LookupError, KeyError:
             return "unknown"
     state = SessionState(uid=uid)
     try:
@@ -609,7 +607,7 @@ def _notify_personal_time(now, send) -> int:
     mark = state_dir() / "personal_time_notified.json"
     try:
         seen = json.loads(mark.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         seen = {}
     today = now.date().isoformat()
     if isinstance(seen, dict) and seen.get("day") == today:
@@ -638,7 +636,7 @@ def _notify_block_starts(schedule, now, send) -> int:
     mark = state_dir() / "notified.json"
     try:
         seen = json.loads(mark.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         seen = {}
     today = now.date().isoformat()
     done = set(seen.get(today) or [])

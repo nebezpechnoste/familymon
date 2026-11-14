@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
@@ -305,7 +304,7 @@ def test_unsafe_when_new_window_excludes_current_hour_with_session():
     """Pins the incident: setting hours 7-21 at 22:35 with the kid logged in
     terminated their session. The guard must catch exactly this."""
     s = build_settings(_policy())  # Saturday window 8-22
-    live = LiveState(**{**_OPEN_LIVE.__dict__, "active_session_count": 1})
+    live = replace(_OPEN_LIVE, active_session_count=1)
     verdict = plan_is_safe_now(s, live, now=_at(23))  # Sat 23:30, outside 8-22
     assert not verdict.safe
     assert any("excludes the current time" in r for r in verdict.reasons)
@@ -319,20 +318,14 @@ def test_safe_when_no_active_session():
 
 def test_safe_when_current_hour_stays_allowed():
     s = build_settings(_policy())  # Saturday window 8-22
-    live = LiveState(**{**_OPEN_LIVE.__dict__, "active_session_count": 1})
+    live = replace(_OPEN_LIVE, active_session_count=1)
     verdict = plan_is_safe_now(s, live, now=_at(14))
     assert verdict.safe
 
 
 def test_unsafe_when_todays_limit_shrinks_mid_session():
     s = build_settings(_policy(daily_limits="2h"))
-    live = LiveState(
-        **{
-            **_OPEN_LIVE.__dict__,
-            "allowed_hours": s.allowed_hours,
-            "active_session_count": 1,
-        }
-    )
+    live = replace(_OPEN_LIVE, allowed_hours=s.allowed_hours, active_session_count=1)
     verdict = plan_is_safe_now(s, live, now=_at(14))
     assert not verdict.safe
     assert any("limit shrinks" in r for r in verdict.reasons)

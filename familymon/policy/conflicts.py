@@ -22,8 +22,6 @@ without a recognized streaming brand) is left alone.
   whitelist exists.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime

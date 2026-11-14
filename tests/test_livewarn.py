@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, time, timedelta
 
 from familymon.policy.livewarn import (
@@ -59,7 +57,7 @@ def test_cooldown_suppresses_repeats_then_allows():
     assert pending_warnings(SCHED, rows, now, last) == []
     last = {"09:20|Maths|messaging": now - timedelta(minutes=DEFAULT_COOLDOWN_MINUTES)}
     assert len(pending_warnings(SCHED, rows, now, last)) == 1
-    assert len(pending_warnings(SCHED, rows, now, last, cooldown_minutes=10)) == 0
+    assert not pending_warnings(SCHED, rows, now, last, cooldown_minutes=10)
 
 
 def test_video_warns_only_for_streaming_brand_with_detail():

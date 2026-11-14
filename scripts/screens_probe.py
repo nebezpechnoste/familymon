@@ -14,8 +14,6 @@ Uses a unique D-Bus sink name so it doesn't clash with a running
 familymon-capture service.
 """
 
-from __future__ import annotations
-
 import asyncio
 import io
 import json

@@ -25,8 +25,6 @@ interfered with or is broken. The dashboard reads the newest heartbeat event
 (`capture_problems`).
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
@@ -36,7 +34,7 @@ from sqlalchemy.orm import sessionmaker
 
 from familymon.storage.models import Capture, Event
 
-Status = Literal["ok", "stale", "dead", "never", "idle", "watcher_down"]
+type Status = Literal["ok", "stale", "dead", "never", "idle", "watcher_down"]
 
 STALE_THRESHOLD_SECONDS = 180.0
 DEAD_THRESHOLD_SECONDS = 600.0
@@ -166,6 +164,4 @@ def capture_problems(sessions: sessionmaker, start: datetime, end: datetime) -> 
             .where(Event.kind.in_(kinds), Event.at >= start, Event.at < end)
             .group_by(Event.kind)
         ).all()
-    counts = {k: 0 for k in kinds}
-    counts.update({k: n for k, n in rows})
-    return counts
+    return dict.fromkeys(kinds, 0) | dict(rows)

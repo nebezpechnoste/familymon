@@ -23,8 +23,6 @@ The reconciler is stateless: desired content is a pure function of
 on change. A missed tick or reboot self-corrects on the next minute.
 """
 
-from __future__ import annotations
-
 import contextlib
 import json
 import os
@@ -294,7 +292,7 @@ def read_document(path: Path) -> dict | None:
     """Current on-disk document, or None when missing/unreadable/not JSON."""
     try:
         loaded = json.loads(path.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     return loaded if isinstance(loaded, dict) else None
 
@@ -318,8 +316,8 @@ def reconcile(path: Path, document: dict | None) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.parent.parent / f".{path.name}.tmp"
     tmp.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, path)
+    tmp.chmod(0o644)
+    tmp.replace(path)
     return True
 
 
@@ -480,7 +478,7 @@ def scan_processes(uid: int, proc_root: Path = Path("/proc")) -> list[ProcessInf
         if puid != uid:
             continue
         try:
-            exe = os.readlink(entry / "exe").removesuffix(" (deleted)")
+            exe = str((entry / "exe").readlink()).removesuffix(" (deleted)")
         except OSError:
             continue  # kernel thread, zombie, or not ours to see
         try:

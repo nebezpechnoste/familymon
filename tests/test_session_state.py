@@ -1,7 +1,3 @@
-from __future__ import annotations
-
-import pytest
-
 from familymon.capture.session_state import SessionState, SessionStatus
 
 
@@ -31,7 +27,6 @@ def test_not_found_fails_open():
     assert SessionStatus(found=False, active=True, locked=False).suppress_reason() is None
 
 
-@pytest.mark.asyncio
 async def test_status_fails_open_when_connect_raises(monkeypatch):
     s = SessionState(uid=1000)
 
@@ -43,7 +38,6 @@ async def test_status_fails_open_when_connect_raises(monkeypatch):
     assert status == SessionStatus(found=False, active=True, locked=False, queried=False)
 
 
-@pytest.mark.asyncio
 async def test_status_reads_discovered_session(monkeypatch):
     s = SessionState(uid=1000)
     s._bus = object()  # pretend already connected
@@ -63,7 +57,6 @@ async def test_status_reads_discovered_session(monkeypatch):
     assert status.suppress_reason() == "session_locked"
 
 
-@pytest.mark.asyncio
 async def test_status_fails_open_when_no_graphical_session(monkeypatch):
     s = SessionState(uid=1000)
     s._bus = object()
@@ -80,7 +73,6 @@ async def test_status_fails_open_when_no_graphical_session(monkeypatch):
     assert status.suppress_reason() is None
 
 
-@pytest.mark.asyncio
 async def test_status_rediscovers_on_stale_path(monkeypatch):
     s = SessionState(uid=1000)
     s._bus = object()

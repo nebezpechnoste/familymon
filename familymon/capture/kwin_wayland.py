@@ -14,8 +14,6 @@ Two D-Bus surfaces are involved:
   requiring an xdg-desktop-portal consent dialog.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import json
@@ -26,7 +24,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from dbus_next import Message, MessageType
 from dbus_next.aio import MessageBus
@@ -143,7 +141,7 @@ class _WindowSink:
         """One Push call. Returns whether it was accepted."""
         try:
             raw = json.loads(json_str)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             raw = None
         ok = (
             self._nonce is not None
@@ -268,7 +266,7 @@ class KWinWaylandBackend:
         self._owns_script = script_path is None
         self._spectacle_env = _user_session_env()
 
-    async def __aenter__(self) -> KWinWaylandBackend:
+    async def __aenter__(self) -> Self:
         self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
 
         self._sink = _WindowSink()

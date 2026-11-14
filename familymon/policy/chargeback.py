@@ -26,14 +26,13 @@ Runs as root from `familymon-chargeback.timer`; pure logic here, the timekpr
 call is injected so it can be tested without a daemon.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import Self
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
@@ -57,10 +56,10 @@ class ChargeState:
     charged_seconds_today: int = 0
 
     @classmethod
-    def load(cls, path: Path, user: str, today: date) -> ChargeState:
+    def load(cls, path: Path, user: str, today: date) -> Self:
         try:
             raw = json.loads(path.read_text()).get(user) or {}
-        except (OSError, ValueError):
+        except OSError, ValueError:
             raw = {}
         state = cls(
             day=str(raw.get("day") or today.isoformat()),
@@ -76,7 +75,7 @@ class ChargeState:
     def save(self, path: Path, user: str) -> None:
         try:
             data = json.loads(path.read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             data = {}
         data[user] = {
             "day": self.day,

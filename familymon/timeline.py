@@ -7,8 +7,6 @@ personal-time masking happens here, once: a surface that wants the day's
 captures goes through `load_captures` and never reads the table directly.
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from typing import Any

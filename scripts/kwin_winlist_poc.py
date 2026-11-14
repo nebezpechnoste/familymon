@@ -13,13 +13,11 @@ Run on a Plasma 6 Wayland session:
     uv run python scripts/kwin_winlist_poc.py
 """
 
-from __future__ import annotations
-
 import asyncio
-import contextlib
 import json
 import os
 import tempfile
+from pathlib import Path
 
 from dbus_next.aio import MessageBus
 from dbus_next.constants import BusType
@@ -99,8 +97,7 @@ async def main() -> None:
                 f" pid={w.get('pid')}"
             )
     finally:
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(script_path)
+        Path(script_path).unlink(missing_ok=True)
         bus.disconnect()
 
 

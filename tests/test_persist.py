@@ -7,8 +7,6 @@ the screenshot tree is private, including a root that already exists with lax
 bits from an older build.
 """
 
-from __future__ import annotations
-
 import stat
 from datetime import datetime
 

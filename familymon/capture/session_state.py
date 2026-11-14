@@ -20,8 +20,6 @@ Fail-open: any logind error, or no graphical session found, returns
 of a D-Bus hiccup.
 """
 
-from __future__ import annotations
-
 import contextlib
 import logging
 import os

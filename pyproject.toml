@@ -3,7 +3,7 @@ name = "familymon"
 version = "0.0.1"
 description = "Local-first parental-control monitoring for Linux"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "Oleksandr Srv" }]
 dependencies = [
@@ -52,10 +52,10 @@ packages = ["familymon"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM", "RET", "RUF"]
+select = ["E", "F", "I", "B", "UP", "SIM", "RET", "RUF", "C4", "PIE", "PTH", "PERF", "FURB"]
 # En dash and multiplication sign are used on purpose in user-facing strings,
 # docstrings and comments ("20:00–22:00", "N × interval").
 allowed-confusables = ["–", "×"]
@@ -66,4 +66,5 @@ extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]

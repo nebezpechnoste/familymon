@@ -6,8 +6,6 @@ branching. Redaction math itself is covered by test_redact.py; the full D-Bus
 integration by the smoke script.
 """
 
-from __future__ import annotations
-
 import io
 import json
 from unittest.mock import AsyncMock
@@ -42,7 +40,6 @@ def _winlist(windows, *, logical=(100.0, 100.0), screens=1) -> _WindowList:
     return _WindowList(windows=windows, logical_size=logical, screen_count=screens)
 
 
-@pytest.mark.asyncio
 async def test_messaging_window_is_redacted_not_dropped_single_screen():
     """Single screen: a visible messaging window -> the screenshot is captured
     and the messaging rectangle redacted (not the whole frame dropped)."""
@@ -80,7 +77,6 @@ async def test_messaging_window_is_redacted_not_dropped_single_screen():
     assert img.getpixel((75, 50)) != (0, 0, 0)
 
 
-@pytest.mark.asyncio
 async def test_messaging_redacts_on_uniform_multi_monitor():
     """Multi-monitor with a uniform image scale (spectacle composites the whole
     logical desktop at one factor) still redacts — screen count alone no longer
@@ -113,7 +109,6 @@ async def test_messaging_redacts_on_uniform_multi_monitor():
     assert result.messaging_present is True
 
 
-@pytest.mark.asyncio
 async def test_messaging_non_uniform_scale_falls_back_to_full_skip():
     """If the image isn't a uniform scaling of the logical layout, we can't map
     rectangles — never leak, drop the whole screenshot."""
@@ -142,7 +137,6 @@ async def test_messaging_non_uniform_scale_falls_back_to_full_skip():
     assert result.screenshot_redacted is False
 
 
-@pytest.mark.asyncio
 async def test_no_messaging_keeps_full_screenshot():
     backend = _make_backend(_skip("telegram-desktop"))
     backend._enumerate_windows.return_value = _winlist(
@@ -163,7 +157,6 @@ async def test_no_messaging_keeps_full_screenshot():
     assert result.screenshot_skipped_reason is None
 
 
-@pytest.mark.asyncio
 async def test_minimized_messaging_window_is_not_present():
     """A minimized chat isn't on screen, so it's neither redacted nor counted
     as 'present' — the screenshot is kept whole."""
@@ -193,7 +186,6 @@ async def test_minimized_messaging_window_is_not_present():
     assert result.messaging_present is False
 
 
-@pytest.mark.asyncio
 async def test_suppress_reason_skips_screenshot_entirely():
     backend = _make_backend(_skip("telegram-desktop"))
     backend._enumerate_windows.return_value = _winlist(
@@ -208,7 +200,6 @@ async def test_suppress_reason_skips_screenshot_entirely():
     assert result.screenshot_skipped_reason == "session_locked"
 
 
-@pytest.mark.asyncio
 async def test_empty_spectacle_output_means_no_screenshot():
     backend = _make_backend(_skip())
     backend._enumerate_windows.return_value = _winlist(
@@ -221,7 +212,6 @@ async def test_empty_spectacle_output_means_no_screenshot():
     assert result.screenshot_skipped_reason is None
 
 
-@pytest.mark.asyncio
 async def test_window_sink_returns_none_on_timeout():
     sink = _WindowSink()
     result = await sink.wait(timeout=0.05)
@@ -235,7 +225,6 @@ def _payload(nonce: str, **extra) -> str:
     return json.dumps({"nonce": nonce, "windows": [], **extra})
 
 
-@pytest.mark.asyncio
 async def test_window_sink_accepts_kwin_push_with_the_nonce():
     sink = _WindowSink()
     sink.arm("abc123", KWIN)
@@ -245,7 +234,6 @@ async def test_window_sink_accepts_kwin_push_with_the_nonce():
     assert sink.rejected == 0
 
 
-@pytest.mark.asyncio
 async def test_window_sink_rejects_a_push_from_another_connection():
     """Any session process can call Push; only KWin's connection counts."""
     sink = _WindowSink()
@@ -255,7 +243,6 @@ async def test_window_sink_rejects_a_push_from_another_connection():
     assert sink.rejected == 1
 
 
-@pytest.mark.asyncio
 async def test_window_sink_rejects_kwin_push_with_a_wrong_nonce():
     """A script the user loaded into KWin themselves passes the sender check
     but doesn't know this tick's nonce."""
@@ -267,7 +254,6 @@ async def test_window_sink_rejects_kwin_push_with_a_wrong_nonce():
     assert sink.rejected == 2
 
 
-@pytest.mark.asyncio
 async def test_window_sink_counts_a_second_push_as_rejected():
     """The first accepted payload wins; a racing duplicate is tamper evidence."""
     sink = _WindowSink()
@@ -278,14 +264,12 @@ async def test_window_sink_counts_a_second_push_as_rejected():
     assert sink.rejected == 1
 
 
-@pytest.mark.asyncio
 async def test_window_sink_rejects_everything_before_arm():
     sink = _WindowSink()
     assert not sink.offer(KWIN, _payload("abc123"))
     assert sink.rejected == 1
 
 
-@pytest.mark.asyncio
 async def test_window_sink_arm_drops_a_stale_payload():
     sink = _WindowSink()
     sink.arm("one", KWIN)
@@ -332,7 +316,6 @@ def test_rendered_script_carries_the_nonce_and_refuses_odd_ones():
         render_window_list_script('x"; callDBus(')
 
 
-@pytest.mark.asyncio
 async def test_no_screenshot_when_the_window_list_failed():
     """Without KWin's window list a messaging window can't be found, so a
     frame could leak a chat: skip it (this used to save it unredacted)."""
@@ -400,7 +383,6 @@ def test_parse_marks_windows_on_other_desktops_and_activities_hidden():
     }
 
 
-@pytest.mark.asyncio
 async def test_messaging_window_on_another_virtual_desktop_is_not_redacted():
     """A chat parked on another desktop is not on screen: its rectangle shows
     something else there, so blacking it out would hide unrelated content and

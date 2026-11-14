@@ -5,8 +5,6 @@ Run on a Plasma 6 Wayland session:
     uv run python scripts/kwin_backend_smoke.py
 """
 
-from __future__ import annotations
-
 import asyncio
 import sys
 

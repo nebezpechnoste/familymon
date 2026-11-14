@@ -16,15 +16,13 @@ games (exe under common/<dir>/) and Proton games (the wine process's cmdline
 points at the game .exe under common/<dir>/).
 """
 
-from __future__ import annotations
-
 import contextlib
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
 
 import yaml
 
@@ -115,19 +113,17 @@ def _process_path_tokens(pid: int) -> list[str]:
     """Executable path + cmdline argv for a pid, for substring/prefix matching."""
     tokens: list[str] = []
     with contextlib.suppress(OSError):
-        tokens.append(os.readlink(f"/proc/{pid}/exe"))
-    try:
-        with open(f"/proc/{pid}/cmdline", "rb") as f:
-            tokens.extend(a for a in f.read().decode("utf-8", "replace").split("\0") if a)
-    except OSError:
-        pass
+        tokens.append(str(Path(f"/proc/{pid}/exe").readlink()))
+    with contextlib.suppress(OSError):
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        tokens.extend(a for a in raw.decode("utf-8", "replace").split("\0") if a)
     return tokens
 
 
 def load_known_games(path: Path) -> set[str]:
     try:
         raw = json.loads(path.read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return set()
     return {str(d) for d in raw if isinstance(d, str)} if isinstance(raw, list) else set()
 
@@ -170,7 +166,7 @@ class GameLibrary:
         curated_path: Path | None = None,
         home: Path | None = None,
         known_path: Path | None = None,
-    ) -> GameLibrary:
+    ) -> Self:
         """Scan the Steam library under `home` (default: current user's) plus
         the curated list. Pass the monitored user's home when running as root,
         and `known_path` to keep every game ever seen (remember_games)."""
@@ -202,7 +198,7 @@ class GameLibrary:
         if pid:
             tokens = _process_path_tokens(pid)
             for tok in tokens:
-                base = os.path.basename(tok).lower()
+                base = Path(tok).name.lower()
                 if base in self.curated_binaries:
                     return True
                 for game_dir in self.game_dirs:

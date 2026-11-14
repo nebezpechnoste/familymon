@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -11,7 +9,7 @@ from familymon.analyze.categories import Category
 # Sources include not-yet-built phases (ocr_kw, local_vlm, claude_code_bootstrap).
 # "same_window" was dropped: same-window dedup was abandoned in favour of pHash
 # (see capture/loop.py), so no code ever emits it.
-ClassificationSource = Literal[
+type ClassificationSource = Literal[
     "phash",
     "heuristic",
     "domain",

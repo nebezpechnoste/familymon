@@ -18,8 +18,6 @@ Routes:
   GET /api/stats       — seconds-per-category aggregation (JSON)
 """
 
-from __future__ import annotations
-
 import os
 import secrets
 from collections.abc import Callable

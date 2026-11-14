@@ -13,8 +13,6 @@ means "this screenshot is a perceptual-hash duplicate of a recent one, so it
 wasn't persisted".
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from dataclasses import dataclass

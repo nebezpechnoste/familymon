@@ -7,12 +7,10 @@ directly with capture timestamps (which are local). Conflict detection (a later
 piece) asks `block_at(local_datetime)` whether a capture falls inside a block.
 """
 
-from __future__ import annotations
-
-import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
+from typing import Self
 
 import yaml
 
@@ -79,7 +77,7 @@ class ScheduleBlock:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> ScheduleBlock:
+    def from_dict(cls, d: dict) -> Self:
         return cls(
             day=d["day"],
             start=_parse_hhmm(d["start"]),
@@ -125,7 +123,7 @@ class SchoolBreak:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> SchoolBreak:
+    def from_dict(cls, d: dict) -> Self:
         if not isinstance(d, dict) or "start" not in d or "end" not in d:
             raise ValueError(f"break needs start and end dates: {d!r}")
         start, end = _parse_date(d["start"]), _parse_date(d["end"])
@@ -224,10 +222,10 @@ class Schedule:
         tmp = path.with_name(f".{path.name}.tmp")
         tmp.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
         secure(tmp, shared=True)
-        os.replace(tmp, path)
+        tmp.replace(path)
 
     @classmethod
-    def load(cls, path: Path) -> Schedule:
+    def load(cls, path: Path) -> Self:
         raw = yaml.safe_load(path.read_text()) or {}
         blocks = [ScheduleBlock.from_dict(b) for b in raw.get("blocks") or []]
         breaks = [SchoolBreak.from_dict(b) for b in raw.get("breaks") or []]

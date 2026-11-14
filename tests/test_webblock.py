@@ -1,11 +1,10 @@
-from __future__ import annotations
-
 import json
 import os
 import re
 import shutil
 import subprocess
 from datetime import datetime, time
+from pathlib import Path
 
 import pytest
 
@@ -220,7 +219,7 @@ def test_reconcile_never_leaves_temp_files_in_the_watched_dir(tmp_path):
     managed = tmp_path / "policies" / "managed"
     path = managed / "familymon.json"
     reconcile(path, chrome_policy_document(("a.com",), ()))
-    assert os.listdir(managed) == ["familymon.json"]
+    assert [p.name for p in managed.iterdir()] == ["familymon.json"]
     assert not list(tmp_path.glob("policies/.*.tmp"))
 
 
@@ -328,7 +327,7 @@ def test_scan_and_close_a_fake_browser(tmp_path):
     fake_dir = tmp_path / "fm-fake-browser"
     fake_dir.mkdir()
     fake = fake_dir / "fake-bin"
-    shutil.copy(perl, fake)
+    Path(perl).copy(fake)
     fake.chmod(0o755)
     cfg = WebBlockConfig(
         enabled=True, forbid_other_browsers=False, forbid_apps=(f".*{re.escape(str(fake))}.*",)

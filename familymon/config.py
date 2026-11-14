@@ -7,8 +7,6 @@ through FAMILYMON_STATE_DIR. Dev runs (non-root) put state under
 XDG_STATE_HOME (~/.local/state/familymon by default).
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 
